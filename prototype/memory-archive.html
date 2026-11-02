@@ -1,0 +1,518 @@
+<title>기억 아카이브</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@500;700;900&display=swap">
+<style>
+/* Layout: 화면은 하나. 맨 위 작은 할 일 띠 / 마스코트+한 문장 / 가운데(사진·할 일 카드) / 아래 큰 버튼.
+   들어오면 바로 대화가 시작되고, 할 일 확인 → 사진 이야기 → 이야기책 저장까지 같은 자리에서 이어진다.
+   흰 바탕, 회색 면으로만 구분. 색은 버튼에만: 초록=네·시작, 빨강=아니요·그만, 파랑=다시 듣기·잘 모르겠어요. */
+:root {
+  --bg: #FFFFFF;
+  --soft: #F5F5F7;
+  --soft-2: #E4E4EA;
+  --ink: #1D1D22;
+  --muted: #77777F;
+  --pink: #FF4F84;
+  --pink-soft: #FFEAF0;
+  --yellow: #FFC93C;
+  --go: #12A150;
+  --go-soft: #E8F7EE;
+  --stop: #F0413A;
+  --help: #2E6BFF;
+  --on-color: #FFFFFF;
+  --focus: #2E6BFF;
+  --font: "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  background: var(--bg); color: var(--ink);
+  font-family: var(--font); font-size: 24px; line-height: 1.5; font-weight: 500;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0;
+  display: flex; justify-content: center;
+}
+button, select { font: inherit; color: inherit; }
+:focus-visible { outline: 4px solid var(--focus); outline-offset: 3px; }
+p { margin: 0; }
+.i { width: 1em; height: 1em; flex: none; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+
+.app { width: 100%; max-width: 640px; height: 100%; display: flex; flex-direction: column; gap: 14px; padding-block: 14px 18px; }
+
+.top { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 17px; color: var(--muted); }
+.top .right { display: flex; gap: 8px; }
+.mini { min-height: 46px; padding: 6px 16px; border-radius: 999px; border: 0; background: var(--soft); cursor: pointer; font-size: 17px; font-weight: 700; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
+
+/* 오늘 할 일 띠 */
+.strip { display: flex; gap: 8px; flex-wrap: wrap; }
+.tchip { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px; background: var(--soft); font-size: 19px; font-weight: 700; color: var(--ink); }
+.tchip .i { font-size: 22px; }
+.tchip.done { background: var(--go-soft); color: var(--go); }
+.tchip.now { background: var(--bg); box-shadow: inset 0 0 0 3px var(--pink); }
+.tchip.later { background: var(--bg); box-shadow: inset 0 0 0 2px var(--soft-2); }
+
+.stage { display: flex; gap: 12px; align-items: flex-end; }
+.mascot { width: 104px; height: 88px; flex: none; }
+.mascot svg { width: 100%; height: 100%; display: block; }
+.bubble { flex: 1; min-width: 0; background: var(--soft); border-radius: 28px 28px 28px 8px; padding: 18px 22px; font-size: 29px; font-weight: 700; line-height: 1.45; text-wrap: pretty; }
+.tag { display: inline-block; font-size: 15px; font-weight: 700; color: var(--pink); background: var(--pink-soft); border-radius: 999px; padding: 2px 10px; margin-bottom: 6px; }
+@media (prefers-reduced-motion: no-preference) {
+  .talking .mascot svg { animation: bob .9s ease-in-out 2; }
+  @keyframes bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+}
+
+.middle { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; justify-content: center; }
+.photo { border-radius: 18px; overflow: hidden; aspect-ratio: 4 / 3; width: 100%; max-width: 460px; align-self: center; background: var(--soft); }
+.photo svg { display: block; width: 100%; height: 100%; }
+
+.taskbig { align-self: center; width: 100%; max-width: 420px; background: var(--soft); border-radius: 28px; padding: 28px 24px; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
+.taskbig .i { font-size: 56px; stroke-width: 1.8; margin-bottom: 6px; }
+.taskbig .when { font-size: 24px; color: var(--muted); font-weight: 700; }
+.taskbig .what { font-size: 36px; font-weight: 900; }
+.taskbig.done { background: var(--go-soft); color: var(--go); }
+
+.card { background: var(--soft); border-radius: 24px; padding: 20px 22px; display: flex; flex-direction: column; gap: 10px; }
+.card h2 { margin: 0; font-size: 30px; font-weight: 900; line-height: 1.3; }
+.card .line { font-size: 26px; }
+.chip { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; font-size: 18px; font-weight: 700; padding: 4px 14px; border-radius: 999px; background: var(--bg); color: var(--muted); }
+
+.sent { display: flex; align-items: center; gap: 14px; width: 100%; min-height: 84px; padding: 14px 18px; border-radius: 22px; border: 0; background: var(--go-soft); cursor: pointer; text-align: left; font-size: 25px; font-weight: 700; }
+.sent .mark { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; flex: none; background: var(--go); color: var(--on-color); font-size: 26px; }
+.sent[aria-pressed="false"] { background: var(--soft); color: var(--muted); text-decoration: line-through; }
+.sent[aria-pressed="false"] .mark { background: var(--stop); }
+
+.people { display: flex; gap: 20px; justify-content: center; flex-wrap: wrap; }
+.person { display: flex; flex-direction: column; align-items: center; gap: 8px; font-size: 22px; font-weight: 700; color: var(--muted); }
+.avatar { width: 104px; height: 104px; border-radius: 50%; display: grid; place-items: center; font-size: 30px; font-weight: 900; background: var(--pink-soft); color: var(--pink); flex: none; }
+.avatar.sm { width: 64px; height: 64px; font-size: 20px; }
+
+.reply { display: flex; gap: 14px; align-items: flex-start; }
+.reply .who { font-size: 18px; color: var(--muted); font-weight: 700; }
+.reply .say { font-size: 25px; font-weight: 700; }
+
+.cal { text-align: center; padding: 24px; background: var(--soft); border-radius: 24px; display: flex; flex-direction: column; gap: 4px; }
+.cal .d { font-size: 22px; color: var(--pink); font-weight: 900; }
+.cal .t { font-size: 36px; font-weight: 900; }
+.cal .w { font-size: 26px; font-weight: 700; }
+
+.actions { display: flex; flex-direction: column; gap: 10px; }
+.ans { display: flex; align-items: center; gap: 14px; width: 100%; min-height: 88px; padding: 10px 26px; border-radius: 24px; border: 0; cursor: pointer; font-size: 28px; font-weight: 900; text-align: left; transition: transform .08s; }
+.ans:active { transform: scale(.98); }
+.ans .i { font-size: 34px; stroke-width: 2.6; }
+.ans:disabled { opacity: .35; cursor: not-allowed; }
+.k-go { background: var(--go); color: var(--on-color); }
+.k-stop { background: var(--stop); color: var(--on-color); }
+.k-help { background: var(--help); color: var(--on-color); }
+.k-pick { background: var(--bg); color: var(--ink); box-shadow: inset 0 0 0 3px var(--pink); }
+.k-theme { background: var(--yellow); color: var(--ink); }
+.k-soft { background: var(--soft); color: var(--ink); }
+
+.bar { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 10px; }
+.bar .ans { min-height: 70px; font-size: 21px; padding: 8px 10px; justify-content: center; gap: 8px; text-align: center; }
+.bar .ans .i { font-size: 26px; }
+
+.admin { font-size: 19px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 16px; padding-bottom: 20px; }
+.admin h1 { font-size: 28px; margin: 0; font-weight: 900; }
+.admin h2 { font-size: 22px; margin: 0; font-weight: 900; }
+.admin .card { font-size: 19px; }
+.admin .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding-block: 10px; border-bottom: 1px solid var(--soft-2); }
+.admin .row:last-child { border-bottom: 0; }
+.admin .grow { flex: 1 1 160px; min-width: 0; }
+.admin .thumb { width: 84px; flex: none; border-radius: 10px; }
+.admin select { min-height: 46px; border: 0; border-radius: 12px; padding: 4px 10px; background: var(--bg); }
+.admin label { display: flex; gap: 8px; align-items: center; min-height: 46px; cursor: pointer; }
+.admin input[type=checkbox] { width: 24px; height: 24px; accent-color: var(--go); }
+.admin ul { margin: 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: 6px; }
+.muted { color: var(--muted); }
+.note { background: var(--pink-soft); border-radius: 14px; padding: 12px 16px; font-size: 17px; }
+</style>
+
+<div class="app" id="app"></div>
+
+<script>
+// ---------- 선 아이콘 ----------
+const P = {
+  check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  x: '<path d="M6 6l12 12M18 6L6 18"/>',
+  question: '<circle cx="12" cy="12" r="9"/><path d="M9.6 9.4a2.5 2.5 0 1 1 3.4 2.4c-.6.3-1 .8-1 1.5v.6"/><path d="M12 17h.01"/>',
+  speaker: '<path d="M4 10v4h4l5 4V6L8 10z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/>',
+  mute: '<path d="M4 10v4h4l5 4V6L8 10z"/><path d="M17 9l5 5M22 9l-5 5"/>',
+  skip: '<path d="M4 12h14M13 7l5 5-5 5"/>',
+  stop: '<rect x="6" y="6" width="12" height="12" rx="2"/>',
+  book: '<path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H11v16H5.5A1.5 1.5 0 0 1 4 18.5z"/><path d="M20 5.5A1.5 1.5 0 0 0 18.5 4H13v16h5.5a1.5 1.5 0 0 0 1.5-1.5z"/>',
+  chat: '<path d="M4 5h16v11H9l-5 4z"/>',
+  trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
+  prev: '<path d="M15 5l-7 7 7 7"/>',
+  next: '<path d="M9 5l7 7-7 7"/>',
+  lock: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+  people: '<circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20c.5-3.5 3-5.5 6-5.5s5.5 2 6 5.5M15.5 14.6c3-.4 5 1.2 5.5 5.4"/>',
+  calendar: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>',
+  pill: '<path d="M10.5 4.5a4.95 4.95 0 0 1 7 7l-6 6a4.95 4.95 0 0 1-7-7z"/><path d="M8.5 8.5l7 7"/>',
+  music: '<path d="M9 18V5l11-2v13"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/>',
+  phone: '<path d="M5 4h3.5l1.5 4-2 1.5a11 11 0 0 0 6.5 6.5l1.5-2 4 1.5V19a1.5 1.5 0 0 1-1.6 1.5A16 16 0 0 1 3.5 5.6 1.5 1.5 0 0 1 5 4z"/>',
+  pot: '<path d="M4 10h16v3a7 7 0 0 1-7 7h-2a7 7 0 0 1-7-7z"/><path d="M2 10h20M9.5 6.5c0-1 1-1 1-2.5M13.5 6.5c0-1 1-1 1-2.5"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1L7 17M17 7l2.1-2.1"/>'
+};
+const ic = (k) => k ? `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${P[k]}</svg>` : '';
+
+// ---------- 마스코트 '몽실이' (솜구름) ----------
+const MASCOT = `<svg viewBox="0 0 120 100" aria-hidden="true">
+  <defs><linearGradient id="cloud" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFF3F7"/><stop offset="1" stop-color="#FFDCE7"/></linearGradient></defs>
+  <g fill="url(#cloud)">
+    <rect x="14" y="46" width="92" height="42" rx="21"/>
+    <circle cx="38" cy="50" r="20"/><circle cx="62" cy="38" r="26"/><circle cx="86" cy="52" r="18"/>
+  </g>
+  <ellipse cx="49" cy="62" rx="3.4" ry="4.4" fill="#3A2E2B"/><ellipse cx="73" cy="62" rx="3.4" ry="4.4" fill="#3A2E2B"/>
+  <ellipse cx="41" cy="71" rx="5.5" ry="3.2" fill="#FF8FB0" opacity=".6"/><ellipse cx="81" cy="71" rx="5.5" ry="3.2" fill="#FF8FB0" opacity=".6"/>
+  <path d="M57 69 q4 4 8 0" stroke="#3A2E2B" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+</svg>`;
+
+// ---------- 가상 사진 ----------
+const ART = {
+  market: `<svg viewBox="0 0 320 240" preserveAspectRatio="xMidYMid slice" aria-label="남대문 시장 국밥집 앞 사진"><rect width="320" height="240" fill="#DCC9A6"/><rect y="175" width="320" height="65" fill="#B9A07A"/><rect x="22" y="44" width="276" height="135" fill="#C6AD86"/><g fill="#8A6B4A"><rect x="22" y="62" width="23" height="30"/><rect x="68" y="62" width="23" height="30"/><rect x="114" y="62" width="23" height="30"/><rect x="160" y="62" width="23" height="30"/><rect x="206" y="62" width="23" height="30"/><rect x="252" y="62" width="23" height="30"/></g><g fill="#EADBBE"><rect x="45" y="62" width="23" height="30"/><rect x="91" y="62" width="23" height="30"/><rect x="137" y="62" width="23" height="30"/><rect x="183" y="62" width="23" height="30"/><rect x="229" y="62" width="23" height="30"/><rect x="275" y="62" width="23" height="30"/></g><rect x="112" y="16" width="96" height="34" rx="3" fill="#F2E6CC" stroke="#6B5139" stroke-width="2"/><text x="160" y="40" text-anchor="middle" font-size="20" font-weight="700" fill="#5B4330" font-family="sans-serif">국 밥</text><rect x="134" y="104" width="52" height="72" fill="#6E5640"/><rect x="40" y="108" width="64" height="40" fill="#A88E68"/><rect x="216" y="108" width="64" height="40" fill="#A88E68"/><g fill="#4E3B2A"><circle cx="92" cy="150" r="11"/><rect x="80" y="160" width="24" height="44" rx="8"/><circle cx="236" cy="146" r="12"/><rect x="223" y="157" width="26" height="48" rx="8"/></g></svg>`,
+  dol: `<svg viewBox="0 0 320 240" preserveAspectRatio="xMidYMid slice" aria-label="돌잔치 사진"><rect width="320" height="240" fill="#E3D2B2"/><rect y="150" width="320" height="90" fill="#C4AB82"/><rect x="60" y="138" width="200" height="16" rx="3" fill="#7D5F40"/><rect x="72" y="154" width="10" height="44" fill="#6A4F35"/><rect x="238" y="154" width="10" height="44" fill="#6A4F35"/><g fill="#F3E8D2" stroke="#9C8160"><ellipse cx="104" cy="128" rx="24" ry="8"/><ellipse cx="104" cy="120" rx="20" ry="7"/><ellipse cx="104" cy="113" rx="16" ry="6"/><ellipse cx="216" cy="128" rx="24" ry="8"/><ellipse cx="216" cy="120" rx="20" ry="7"/></g><circle cx="160" cy="98" r="14" fill="#5A4430"/><path d="M140 140 q20-40 40 0z" fill="#B65F4A"/><path d="M146 116 h28 v24 h-28z" fill="#E1B341"/></svg>`,
+  beach: `<svg viewBox="0 0 320 240" preserveAspectRatio="xMidYMid slice" aria-label="바닷가 사진"><rect width="320" height="240" fill="#D5C7A9"/><circle cx="250" cy="58" r="20" fill="#F1E5C9"/><rect y="110" width="320" height="60" fill="#9D8D6F"/><rect y="165" width="320" height="75" fill="#E2CFA8"/><g fill="#4E3B2A"><circle cx="110" cy="150" r="9"/><rect x="101" y="158" width="18" height="34" rx="6"/><circle cx="140" cy="146" r="10"/><rect x="130" y="155" width="20" height="38" rx="6"/><circle cx="168" cy="160" r="7"/><rect x="161" y="166" width="14" height="26" rx="5"/></g></svg>`
+};
+
+// ---------- 대화 각본 ----------
+// kind: go(초록) stop(빨강) help(파랑) pick(분홍 테두리) theme(노랑)
+// task: 이 질문이 가리키는 오늘 할 일 번호 / done: 누르면 완료 처리할 할 일 번호
+const IDLE_OPTS = [
+  { t: '이야기 더 하기', icon: 'chat', kind: 'go', act: 'restart' },
+  { t: '내 이야기책 보기', icon: 'book', kind: 'theme', act: 'book' }
+];
+const SCRIPT = {
+  hello: { say: '순자 님, 안녕하세요! 몽실이예요. 오늘 할 일부터 같이 볼까요?',
+    opts: [ { t: '좋아요', icon: 'check', kind: 'go', next: 'med' } ] },
+  med: { task: 0, say: '아침 혈압약은 드셨어요?',
+    opts: [ { t: '네, 먹었어요', icon: 'check', kind: 'go', done: 0, next: 'song', pre: '잘하셨어요! ' },
+            { t: '아직이요', icon: 'x', kind: 'stop', next: 'medLater' } ] },
+  medLater: { task: 0, say: '그럼 지금 물 한 잔이랑 같이 드세요. 드시면 초록 버튼을 눌러 주세요.',
+    opts: [ { t: '먹었어요', icon: 'check', kind: 'go', done: 0, next: 'song', pre: '잘하셨어요! ' },
+            { t: '이따 먹을게요', kind: 'pick', next: 'song', pre: '알겠어요. 이따 다시 알려 드릴게요. ' } ] },
+  song: { task: 1, say: '오후 2시에는 복지관 노래교실이 있어요.',
+    opts: [ { t: '알겠어요', icon: 'check', kind: 'go', next: 'call' } ] },
+  call: { task: 2, say: '저녁 7시에는 하은이와 영상통화가 있어요.',
+    opts: [ { t: '알겠어요', icon: 'check', kind: 'go', next: 'start', pre: '오늘 할 일은 다 봤어요. ' } ] },
+  start: { skipNext: 'mood', say: '그런데 미경 님이 사진을 한 장 올렸어요. 같이 볼까요?',
+    opts: [ { t: '네, 볼래요', icon: 'check', kind: 'go', next: 'photo' },
+            { t: '다음에 볼래요', icon: 'x', kind: 'stop', next: 'idle', pre: '알겠어요. ' } ] },
+  photo: { photo: 'p1', topic: '시장 사진', skipNext: 'mood', say: '시장 사진이에요. 어떤 느낌이 드세요?',
+    opts: [ { t: '국밥 냄새가 나요', kind: 'pick', s: '남대문 시장 국밥집 사진을 보면 지금도 국밥 냄새가 나는 것 같다.', next: 'taste' },
+            { t: '잘 모르겠어요', icon: 'question', kind: 'help', next: 'hint' } ] },
+  hint: { photo: 'p1', skipNext: 'mood', say: '괜찮아요. 간판에 \'국밥\'이라고 써 있네요. 국밥 좋아하셨어요?',
+    opts: [ { t: '네, 좋아했어요', icon: 'check', kind: 'go', s: '국밥을 참 좋아했다.', next: 'taste' },
+            { t: '아니요', icon: 'x', kind: 'stop', next: 'mood' } ] },
+  taste: { topic: '그때 먹던 국밥 맛', skipNext: 'home', say: '그때 국밥은 어떤 맛이었어요?',
+    opts: [ { t: '국물이 진했어요', kind: 'pick', s: '그 시절 국밥은 고기 국물이 진했다.', next: 'home' },
+            { t: '깍두기가 시었어요', kind: 'pick', s: '국밥과 같이 나온 깍두기는 아주 시었다.', next: 'home' } ] },
+  home: { topic: '집에서 끓인 국밥', skipNext: 'wrap', say: '집에서도 국밥을 끓이셨어요?',
+    opts: [ { t: '네, 끓였어요', icon: 'check', kind: 'go', next: 'how' },
+            { t: '아니요', icon: 'x', kind: 'stop', next: 'wrap' } ] },
+  how: { topic: '국밥 끓이는 비법', skipNext: 'wrap', say: '어떻게 끓이셨어요?',
+    opts: [ { t: '사골을 밤새 고았어요', kind: 'pick', s: '집에서는 사골을 밤새 고아 국밥을 끓였다.', recipe: true, next: 'more' },
+            { t: '무를 크게 썰었어요', kind: 'pick', s: '무를 큼직하게 썰어 넣어야 국물에 단맛이 난다.', recipe: true, next: 'more' } ] },
+  more: { topic: '국밥 끓이는 비법', skipNext: 'wrap', say: '다른 비법도 있어요?',
+    opts: [ { t: '소금은 먹기 직전에 넣어요', kind: 'pick', s: '소금은 먹기 직전에 넣는다.', recipe: true, next: 'wrap' },
+            { t: '그게 다예요', icon: 'check', kind: 'go', next: 'wrap' } ] },
+  wrap: { say: '오늘 이야기를 이야기책에 남길까요?',
+    opts: [ { t: '네, 남길래요', icon: 'check', kind: 'go', act: 'draft' },
+            { t: '아니요', icon: 'x', kind: 'stop', next: 'bye' } ] },
+  mood: { skipNext: 'bye', say: '그럼 오늘 기분은 어떠세요?',
+    opts: [ { t: '좋아요', kind: 'pick', next: 'bye' },
+            { t: '그저 그래요', kind: 'pick', next: 'bye' } ] },
+  bye: { say: '이야기해 주셔서 고마워요. 또 이야기하고 싶으면 불러 주세요.', opts: IDLE_OPTS },
+  idle: { say: '또 이야기하고 싶으면 아래 버튼을 눌러 주세요.', opts: IDLE_OPTS }
+};
+
+// ---------- 상태 ----------
+const S = {
+  screen: 'main', sound: true, touched: false, lastSay: '',
+  tasks: [
+    { icon: 'pill', when: '오전 9시', short: '혈압약', what: '혈압약 먹기', done: false },
+    { icon: 'music', when: '오후 2시', short: '노래교실', what: '복지관 노래교실', done: false },
+    { icon: 'phone', when: '저녁 7시', short: '하은이 통화', what: '하은이와 영상통화', done: false }
+  ],
+  later: [],
+  photos: [
+    { id: 'p1', title: '남대문 시장 국밥집 앞', art: 'market', by: '미경(딸)', vis: 'all', ai: true },
+    { id: 'p2', title: '미경이 돌잔치', art: 'dol', by: '본인', vis: 'all', ai: true },
+    { id: 'p3', title: '강릉 바닷가', art: 'beach', by: '하은(손녀)', vis: 'me', ai: false }
+  ],
+  entries: [
+    { id: 'e1', title: '미경이 돌잔치', photo: 'p2', vis: 'all',
+      lines: ['미경이 돌잔치는 집 마당에서 했다.', '떡을 넉넉히 해서 이웃들과 나눠 먹었다.'],
+      replies: [{ who: '미경', text: '엄마, 그 떡 이야기 저도 기억나요!' }] },
+    { id: 'e2', title: '밥상에서는 다투지 않는다', photo: null, vis: 'me',
+      lines: ['밥 먹을 때는 다투지 않는다.', '할 말은 밥을 다 먹고 하면 된다.'], replies: [] }
+  ],
+  skip: [], talk: { utter: [], recipe: false, node: 'hello', prefix: '', step: null },
+  bookIdx: 0, bookDel: false
+};
+const VIS = { me: '나만 보기', all: '가족 모두' };
+
+// ---------- 도우미 ----------
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const photoOf = (id) => S.photos.find(p => p.id === id);
+const pic = (id) => `<div class="photo">${ART[photoOf(id).art]}</div>`;
+const btn = (kind, icon, label, act, id = '', dis = false) =>
+  `<button class="ans k-${kind}" data-act="${act}" data-id="${id}" ${dis ? 'disabled' : ''}>${ic(icon)}<span>${label}</span></button>`;
+const avatar = (name, sm) => `<div class="avatar ${sm ? 'sm' : ''}" aria-hidden="true">${name}</div>`;
+
+function speak(text) {
+  if (!S.sound || !S.touched) return;
+  try {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'ko-KR'; u.rate = 0.85; u.volume = 1;
+    speechSynthesis.speak(u);
+  } catch (e) {}
+}
+
+// ---------- 오늘 할 일 띠 ----------
+function strip() {
+  const T = S.talk, n = S.screen === 'main' && !T.step ? SCRIPT[T.node] : null;
+  const now = n && n.task !== undefined ? n.task : -1;
+  return `<div class="strip" aria-label="오늘 할 일">
+    ${S.tasks.map((t, i) => `<span class="tchip ${t.done ? 'done' : ''} ${i === now ? 'now' : ''}">${ic(t.done ? 'check' : t.icon)}${t.when.replace(/^(오전|오후|저녁) /, '$1 ')} ${t.short}</span>`).join('')}
+    ${S.later.map(t => `<span class="tchip later">${ic(t.icon)}${t.short}</span>`).join('')}
+  </div>`;
+}
+
+// ---------- 대화 (첫 화면) ----------
+function enterNode(key, prefix = '') {
+  const T = S.talk;
+  let n = SCRIPT[key];
+  while (n.topic && S.skip.includes(n.topic) && n.skipNext) { key = n.skipNext; n = SCRIPT[key]; }
+  if (key === 'wrap' && !T.utter.length) key = 'bye';
+  T.node = key; T.prefix = prefix; T.step = null;
+}
+
+function vMain() {
+  const T = S.talk;
+  const bar = (canSkip) =>
+    btn('help', 'speaker', '다시 듣기', 'again') +
+    (canSkip ? btn('soft', 'skip', '다른 이야기', 'skip') : '') +
+    btn('stop', 'stop', '그만', 'stop');
+  const toIdle = btn('go', 'check', '알겠어요', 'toIdle');
+
+  if (T.step === 'draft') {
+    const kept = T.draft.filter(d => d.keep).length;
+    return {
+      say: '이렇게 남길게요. 빼고 싶은 문장은 눌러 주세요.',
+      middle: T.draft.map((d, i) => `
+        <button class="sent" data-act="toggleSent" data-id="${i}" aria-pressed="${d.keep}">
+          <span class="mark" aria-hidden="true">${ic(d.keep ? 'check' : 'x')}</span><span>${esc(d.text)}</span>
+        </button>`).join(''),
+      actions: btn('go', 'book', '이대로 남기기', 'saveDraft', '', !kept) + btn('stop', 'x', '남기지 않기', 'discardDraft'),
+      bar: bar(false), speakExtra: T.draft.map(d => d.text).join(' ')
+    };
+  }
+  if (T.step === 'share') return {
+    say: '이야기책에 남겼어요. 가족에게도 보여 줄까요?',
+    middle: `<div class="people"><div class="person">${avatar('미경')}딸</div><div class="person">${avatar('하은')}손녀</div></div>`,
+    actions: btn('go', 'people', '가족에게 보여 주기', 'shareAll') + btn('stop', 'lock', '나만 볼래요', 'shareMe'),
+    bar: bar(false)
+  };
+  if (T.step === 'savedMe') return {
+    say: '순자 님만 볼 수 있게 남겼어요. 나중에 언제든 바꿀 수 있어요.',
+    middle: '', actions: toIdle, bar: bar(false)
+  };
+  if (T.step === 'reply') {
+    const r = T.reply;
+    return {
+      say: `<span class="tag">시연</span><br>${r.who} 님이 답장을 보냈어요!`,
+      middle: `<div class="card"><div class="reply">${avatar(r.who, true)}<div><p class="who">${r.who}</p><p class="say">${esc(r.text)}</p></div></div></div>`,
+      actions: btn('go', 'next', '다음', T.recipe ? 'toPlan' : 'toDone'), bar: bar(false),
+      speakText: `${r.who} 님이 답장을 보냈어요. ${r.text}`
+    };
+  }
+  if (T.step === 'plan') return {
+    say: '하은 님과 국밥 만들기, 할 일에 넣을까요?',
+    middle: `<div class="cal"><span class="d">11월 7일 토요일</span><span class="t">오전 11시</span><span class="w">하은이와 국밥 만들기</span></div>`,
+    actions: btn('go', 'calendar', '할 일에 넣기', 'planYes') + btn('stop', 'x', '괜찮아요', 'planNo'),
+    bar: bar(false)
+  };
+  if (T.step === 'done') return { say: T.doneSay, middle: '', actions: toIdle, bar: bar(false) };
+
+  const n = SCRIPT[T.node];
+  let middle = '';
+  if (n.photo) middle = pic(n.photo);
+  else if (n.task !== undefined) {
+    const t = S.tasks[n.task];
+    middle = `<div class="taskbig ${t.done ? 'done' : ''}">${ic(t.done ? 'check' : t.icon)}<span class="when">${t.when}</span><span class="what">${esc(t.what)}</span></div>`;
+  }
+  return {
+    say: T.prefix + n.say,
+    middle,
+    actions: n.opts.map((o, i) => btn(o.kind, o.icon, o.t, 'opt', i)).join(''),
+    bar: (T.node === 'idle' || T.node === 'bye' || T.node === 'hello') ? '' : bar(!!n.skipNext)
+  };
+}
+
+// ---------- 내 이야기책 (같은 화면 틀) ----------
+function vBook() {
+  const list = S.entries;
+  const back = btn('go', 'chat', '몽실이와 이야기하기', 'backMain');
+  if (!list.length) return { say: '아직 이야기책이 비어 있어요. 같이 이야기를 나눠 볼까요?', middle: '', actions: back };
+  S.bookIdx = Math.min(S.bookIdx, list.length - 1);
+  const e = list[S.bookIdx];
+  const middle = `
+    <div class="card">
+      <span class="chip">${e.vis === 'all' ? ic('people') + '가족이 볼 수 있어요' : ic('lock') + '나만 봐요'}</span>
+      <h2>${esc(e.title)}</h2>
+      ${e.photo ? pic(e.photo) : ''}
+      ${e.lines.map(l => `<p class="line">${esc(l)}</p>`).join('')}
+      ${e.replies.map(r => `<div class="reply">${avatar(r.who, true)}<div><p class="who">${r.who}의 답장</p><p class="say">${esc(r.text)}</p></div></div>`).join('')}
+    </div>`;
+  if (S.bookDel) return {
+    say: `'${e.title}' 이야기를 지울까요? 지우면 되돌릴 수 없어요.`, middle,
+    actions: btn('go', 'check', '그대로 둘래요', 'delNo') + btn('stop', 'trash', '지울래요', 'delYes')
+  };
+  return {
+    say: `이야기책 ${list.length}개 중 ${S.bookIdx + 1}번째, '${e.title}'예요.`,
+    middle,
+    actions: `<div class="bar">${btn('soft', 'prev', '앞', 'prev', '', S.bookIdx === 0)}${btn('help', 'speaker', '읽어 주기', 'read')}${btn('soft', 'next', '다음', 'next', '', S.bookIdx === list.length - 1)}</div>`,
+    bar: back + btn('stop', 'trash', '지우기', 'delAsk')
+  };
+}
+
+// ---------- 가족·관리 (보호자용) ----------
+function vAdmin() {
+  return `
+  <div class="admin">
+    <button class="mini" style="align-self:flex-start" data-act="closeAdmin">${ic('prev')} 순자 님 화면으로</button>
+    <h1>가족·관리 화면</h1>
+    <p class="muted">보호자가 사진을 올리고, 공개 범위와 AI 활용 여부를 정하는 곳이에요. 순자 님 화면에는 보이지 않아요.</p>
+    <div class="card">
+      <h2>사진별 설정</h2>
+      ${S.photos.map(p => `
+        <div class="row">
+          <div class="photo thumb">${ART[p.art]}</div>
+          <div class="grow"><strong>${esc(p.title)}</strong><br><span class="muted">${p.by}이 올림</span></div>
+          <select data-change="vis" data-id="${p.id}" aria-label="${esc(p.title)} 공개 범위">${Object.entries(VIS).map(([k, v]) => `<option value="${k}" ${k === p.vis ? 'selected' : ''}>${v}</option>`).join('')}</select>
+          <label><input type="checkbox" data-change="ai" data-id="${p.id}" ${p.ai ? 'checked' : ''}> AI 대화에 사용</label>
+        </div>`).join('')}
+    </div>
+    <div class="card">
+      <h2>다시 묻지 않을 이야기</h2>
+      ${S.skip.length ? S.skip.map((t, i) => `<div class="row"><span class="grow">${esc(t)}</span><button class="mini" data-act="unskip" data-id="${i}">다시 물어도 돼요</button></div>`).join('')
+        : '<p class="muted">대화 중 \'다른 이야기\'를 누르면 그 주제가 여기에 남고, AI가 다시 묻지 않아요.</p>'}
+    </div>
+    <div class="card">
+      <h2>이야기 도우미의 약속</h2>
+      <ul>
+        <li>순자 님이 고른 대답만 이야기책 문장으로 만들어요.</li>
+        <li>기억이 맞는지 시험하지 않아요.</li>
+        <li>저장과 공유는 순자 님이 초록 버튼을 누른 다음에만 해요.</li>
+        <li>사진과 이야기를 AI 학습에 쓰지 않아요.</li>
+      </ul>
+    </div>
+    <p class="note">학교 시연용 화면이에요. 김순자 님과 가족, 사진, 이야기는 모두 가상으로 만들었어요.</p>
+  </div>`;
+}
+
+// ---------- 렌더 ----------
+function render() {
+  const app = document.getElementById('app');
+  const top = `
+    <div class="top">
+      <span>11월 1일 일요일</span>
+      <span class="right">
+        <button class="mini" data-act="sound" aria-pressed="${S.sound}">${ic(S.sound ? 'speaker' : 'mute')}${S.sound ? '소리 켜짐' : '소리 꺼짐'}</button>
+        ${S.screen === 'admin' ? '' : `<button class="mini" data-act="admin">${ic('gear')}가족·관리</button>`}
+      </span>
+    </div>`;
+  if (S.screen === 'admin') { app.innerHTML = top + vAdmin(); return; }
+  const v = S.screen === 'book' ? vBook() : vMain();
+  const changed = v.say !== S.lastSay;
+  app.innerHTML = top + strip() + `
+    <div class="stage ${changed ? 'talking' : ''}"><div class="mascot">${MASCOT}</div><div class="bubble" aria-live="polite">${v.say}</div></div>
+    <div class="middle">${v.middle || ''}</div>
+    <div class="actions">${v.actions}</div>
+    ${v.bar ? `<div class="bar">${v.bar}</div>` : ''}`;
+  if (changed) {
+    S.lastSay = v.say;
+    speak(v.speakText || (v.say.replace(/<[^>]+>/g, ' ') + (v.speakExtra ? ' ' + v.speakExtra : '')));
+  }
+  S.current = v;
+}
+
+// ---------- 동작 ----------
+const ACTS = {
+  sound: () => { S.sound = !S.sound; if (!S.sound) try { speechSynthesis.cancel(); } catch (e) {} render(); },
+  admin: () => { try { speechSynthesis.cancel(); } catch (e) {} S.screen = 'admin'; render(); },
+  closeAdmin: () => { S.screen = 'main'; S.lastSay = ''; render(); },
+  again: () => { const v = S.current; speak(v.speakText || (v.say.replace(/<[^>]+>/g, ' ') + (v.speakExtra ? ' ' + v.speakExtra : ''))); },
+  stop: () => { enterNode('idle', '알겠어요, 쉬어요. '); render(); },
+  toIdle: () => { enterNode('idle', '오늘 이야기 고마워요. '); render(); },
+  restart: () => { S.talk.utter = []; S.talk.recipe = false; enterNode('start', ''); render(); },
+
+  opt: (i) => {
+    const T = S.talk, o = SCRIPT[T.node].opts[+i];
+    if (o.s) T.utter.push(o.s);
+    if (o.recipe) T.recipe = true;
+    if (o.done !== undefined) S.tasks[o.done].done = true;
+    if (o.act) ACTS[o.act](); else { enterNode(o.next, o.pre || ''); render(); }
+  },
+  skip: () => {
+    const T = S.talk, n = SCRIPT[T.node];
+    if (n.topic && !S.skip.includes(n.topic)) S.skip.push(n.topic);
+    enterNode(n.skipNext, '알겠어요, 다른 이야기 해요. ');
+    render();
+  },
+  draft: () => { const T = S.talk; T.step = 'draft'; T.draft = T.utter.map(text => ({ text, keep: true })); render(); },
+  toggleSent: (i) => { const d = S.talk.draft[+i]; d.keep = !d.keep; render(); },
+  saveDraft: () => {
+    const T = S.talk;
+    const e = { id: 'e' + Date.now(), title: T.recipe ? '남대문 시장 국밥' : '시장 사진 이야기', photo: 'p1', vis: 'me',
+      lines: T.draft.filter(d => d.keep).map(d => d.text), replies: [] };
+    S.entries.unshift(e); T.entry = e; T.step = 'share'; render();
+  },
+  discardDraft: () => { enterNode('bye', '알겠어요, 남기지 않을게요. '); render(); },
+  shareAll: () => {
+    const T = S.talk; T.entry.vis = 'all';
+    T.reply = T.recipe
+      ? { who: '하은', text: '할머니, 이번 토요일에 같이 국밥 끓여요! 무는 제가 썰게요.' }
+      : { who: '미경', text: '엄마, 이 이야기는 처음 들어요. 다음에 더 들려주세요.' };
+    T.entry.replies.push(T.reply); T.step = 'reply'; render();
+  },
+  shareMe: () => { S.talk.step = 'savedMe'; render(); },
+  toPlan: () => { S.talk.step = 'plan'; render(); },
+  toDone: () => { S.talk.step = 'done'; S.talk.doneSay = '오늘 이야기 고마워요. 또 이야기해요!'; render(); },
+  planYes: () => {
+    S.later.push({ icon: 'pot', short: '7일(토) 국밥 만들기' });
+    S.talk.step = 'done'; S.talk.doneSay = '할 일에 넣었어요. 위쪽 할 일 줄에서 볼 수 있어요!'; render();
+  },
+  planNo: () => { S.talk.step = 'done'; S.talk.doneSay = '알겠어요. 오늘 이야기 고마워요!'; render(); },
+
+  book: () => { S.bookIdx = 0; S.bookDel = false; S.screen = 'book'; render(); },
+  backMain: () => { S.screen = 'main'; S.bookDel = false; enterNode('idle', '이야기책을 다 봤어요. '); render(); },
+  prev: () => { S.bookIdx = Math.max(0, S.bookIdx - 1); render(); },
+  next: () => { S.bookIdx = Math.min(S.entries.length - 1, S.bookIdx + 1); render(); },
+  read: () => { const e = S.entries[S.bookIdx]; speak(e.title + '. ' + e.lines.join(' ')); },
+  delAsk: () => { S.bookDel = true; render(); },
+  delNo: () => { S.bookDel = false; render(); },
+  delYes: () => { S.entries.splice(S.bookIdx, 1); S.bookDel = false; S.bookIdx = Math.max(0, S.bookIdx - 1); render(); },
+
+  unskip: (i) => { S.skip.splice(+i, 1); render(); }
+};
+
+document.addEventListener('click', (ev) => {
+  const el = ev.target.closest('[data-act]');
+  if (!el || el.disabled) return;
+  S.touched = true;
+  ACTS[el.dataset.act]?.(el.dataset.id);
+});
+document.addEventListener('change', (ev) => {
+  const el = ev.target, p = el.dataset.id && photoOf(el.dataset.id);
+  if (!p) return;
+  if (el.dataset.change === 'vis') p.vis = el.value;
+  if (el.dataset.change === 'ai') p.ai = el.checked;
+});
+
+render();
+</script>
