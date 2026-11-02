@@ -18,14 +18,20 @@ if (!TOKEN || TOKEN.length < 16) {
 }
 
 http.createServer(async (req, res) => {
+  const time = new Date().toLocaleTimeString('ko-KR');
   const ok = req.method === 'POST' && req.url === '/api/chat' && req.headers.authorization === `Bearer ${TOKEN}`;
-  if (!ok) { res.writeHead(403).end('forbidden'); return; }
+  if (!ok) {
+    const why = req.url !== '/api/chat' ? `다른 주소(${req.url})` : !req.headers.authorization ? '비밀번호 없음' : '비밀번호 틀림';
+    console.log(time, '막음:', why);
+    res.writeHead(403).end('forbidden');
+    return;
+  }
   const chunks = [];
   for await (const c of req) chunks.push(c);
   try {
     const r = await fetch(`${TARGET}/api/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: Buffer.concat(chunks) });
     res.writeHead(r.status, { 'Content-Type': 'application/json' }).end(Buffer.from(await r.arrayBuffer()));
-    console.log(new Date().toLocaleTimeString('ko-KR'), '몽실이 질문 1개 처리', r.status);
+    console.log(time, '몽실이 질문 1개 처리', r.status);
   } catch (e) {
     res.writeHead(502).end(JSON.stringify({ error: 'Ollama 가 꺼져 있어요' }));
   }
