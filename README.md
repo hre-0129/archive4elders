@@ -50,7 +50,20 @@ AI가 꺼져 있거나 실패하면 자동으로 각본 대화(`src/app/elder/ta
 - `AI_PROVIDER=ollama` — 내 컴퓨터의 [Ollama](https://ollama.com). 처음 한 번 `ollama pull gemma3:4b`. 무료지만 내 컴퓨터에서만 동작, 이 노트북(CPU)에서 질문 하나에 10초 안팎(첫 질문은 사진을 읽느라 더 오래 걸려서 화면을 열 때 미리 요청해 둔다).
 - `AI_PROVIDER=gemini` + `GEMINI_API_KEY` — 배포된 사이트에서도 쓰려면 이쪽. Vercel 의 Environment Variables 에도 같은 값을 넣는다.
 
+### 배포된 사이트에서 내 컴퓨터의 Ollama 쓰기 (시연 날)
+노트북에서 세 가지를 켜 둔다. (Ollama 는 설치하면 자동으로 켜져 있다)
+```bash
+npm run ai:gate
+```
+```bash
+npm run ai:tunnel
+```
+- `ai:gate`: `.env.local` 의 `OLLAMA_TOKEN` 비밀번호가 맞는 요청만 Ollama 로 넘기는 문지기. 막은 요청은 이유를 찍는다.
+- `ai:tunnel`: 문지기로 들어오는 임시 주소(`https://….trycloudflare.com`)를 만든다. **켤 때마다 주소가 바뀌므로** Vercel 의 `OLLAMA_URL` 을 새 주소로 바꾸고 Redeploy 한다.
+- Vercel 환경 변수: `AI_PROVIDER=ollama`, `OLLAMA_URL`, `OLLAMA_MODEL=gemma3:4b`, `OLLAMA_TOKEN`(`.env.local` 과 같은 값).
+- 노트북이 꺼지거나 셋 중 하나가 멈추면 사이트는 각본 대화로 자동 전환된다.
+
 ## 다음에 할 일
-- 배포된 사이트에서도 AI 쓰기 (Gemini 등 클라우드 키, 또는 Ollama 터널)
+- 고정 주소 터널(Cloudflare 계정 필요) 또는 클라우드 AI 키로 바꿔 노트북 없이 AI 쓰기
 - 조원들의 '오늘의 생활' 기능과 `tasks` 표 맞추기
 - Vercel 에 배포해서 휴대폰·태블릿에서 주소로 접속
