@@ -43,6 +43,24 @@ async function loadAll(fid) {
   return d;
 }
 
+// 다음에 이야기할 사진: AI 사용 허락, 아직 이야기책에 없음, 건너뛴 적 없음
+function nextPhoto(d) {
+  return d.photos.find((p) => p.ai_allowed && !d.stories.some((s) => s.photo_id === p.id) && !d.skipped.includes(p.title));
+}
+
+// 서버(/api/talk)에 몽실이의 다음 질문을 요청
+async function fetchTurn(photoId, history) {
+  const { data: { session } } = await supabase.auth.getSession();
+  const res = await fetch('/api/talk', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
+    body: JSON.stringify({ photoId, history })
+  });
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.error);
+  return body;
+}
+
 export default function ElderPage() {
   const router = useRouter();
   const ctx = useMember();
@@ -52,6 +70,9 @@ export default function ElderPage() {
   const [prefix, setPrefix] = useState('');
   const [sound, setSound] = useState(true);
   const talk = useRef({ utter: [], photo: null });
+  const aiReq = useRef(0);      // 늦게 도착한 AI 응답을 버리기 위한 번호
+  const aiOff = useRef(false);  // AI가 안 되면 이번 접속 동안은 각본 대화만 쓴다
+  const prefetch = useRef(null); // { photoId, promise } 첫 AI 질문을 미리 받아 두는 곳
   const touched = useRef(false);
   const lastSay = useRef('');
   const pendingSpeak = useRef('');
@@ -86,6 +107,13 @@ export default function ElderPage() {
         { type: 'photoStart' }
       ]);
       setScene({ type: 'hello', hasTasks: todo.length > 0 });
+      // 할 일을 확인하는 동안 첫 사진 질문을 미리 받아 둔다 (내 컴퓨터 AI는 사진 읽기가 느려서)
+      const p = nextPhoto(data);
+      if (p) {
+        const promise = fetchTurn(p.id, []);
+        promise.catch(() => {});
+        prefetch.current = { photoId: p.id, promise };
+      }
     });
   }, [ctx.loading, ctx.user, member, fid, router, t0]);
 
@@ -106,7 +134,11 @@ export default function ElderPage() {
   }, [scene, fid, d]);
 
   // ---------- 장면 이동 ----------
-  function show(next, pre = '') { setPrefix(pre); setScene(next); }
+  // 장면 바꾸기. AI가 아닌 곳에서 바꾸면 기다리던 AI 응답은 버린다.
+  function show(next, pre = '', fromAi = false) {
+    if (!fromAi) aiReq.current++;
+    setPrefix(pre); setScene(next);
+  }
 
   function advance(pre = '') {
     const [next, ...rest] = queue;
@@ -116,12 +148,8 @@ export default function ElderPage() {
     show(next, pre);
   }
 
-  function pickPhoto() {
-    return d.photos.find((p) => p.ai_allowed && !d.stories.some((s) => s.photo_id === p.id) && !d.skipped.includes(p.title));
-  }
-
   function startTalk(pre = '') {
-    const photo = pickPhoto();
+    const photo = nextPhoto(d);
     talk.current = { utter: [], photo };
     if (!photo) return goTalk('mood', pre + '지금은 새로 볼 사진이 없어요. ');
     goTalk('start', pre);
@@ -133,7 +161,27 @@ export default function ElderPage() {
     return talkNode(key, p, up && up.role !== 'elder' ? up.display_name : '', member.display_name);
   }
 
+  // AI에게 다음 질문을 받아 온다. 실패하면 각본 대화로 이어 간다.
+  async function aiTurn(history, pre = '') {
+    const id = ++aiReq.current;
+    show({ type: 'ai', loading: true, history }, pre, true);
+    try {
+      const photoId = talk.current.photo.id;
+      // 첫 질문은 화면을 열 때 미리 요청해 둔 것이 있으면 그걸 쓴다
+      const early = !history.length && prefetch.current?.photoId === photoId ? prefetch.current.promise : null;
+      prefetch.current = null;
+      const body = await (early || fetchTurn(photoId, history));
+      if (id === aiReq.current) show({ type: 'ai', loading: false, history, turn: body }, '', true);
+    } catch (e) {
+      console.warn('몽실이 AI 대신 각본 대화로 이어 가요:', e.message);
+      if (id !== aiReq.current) return;
+      if (!history.length) { aiOff.current = true; goTalk('look', pre); }
+      else goTalk('wrap', '');
+    }
+  }
+
   function goTalk(key, pre = '') {
+    if (key === 'look' && !aiOff.current) return aiTurn([], pre);
     let n = nodeOf(key);
     while (n.topic && d.skipped.includes(n.topic) && n.skipNext) { key = n.skipNext; n = nodeOf(key); }
     if (key === 'wrap' && !talk.current.utter.length) key = 'bye';
@@ -192,6 +240,20 @@ export default function ElderPage() {
     B('stop', 'stop', '그만', () => toIdle('알겠어요, 쉬어요. '))
   ].filter(Boolean);
 
+  // 지금 이야기하는 사진 + 가족 설명(누가 썼는지 함께)
+  function photoBlock() {
+    const p = talk.current.photo;
+    if (!p) return null;
+    const note = d.notes.find((x) => x.photo_id === p.id);
+    const noteBy = note && who(note.author);
+    return (
+      <>
+        {d.urls[p.storage_path] && <div className="photo"><img src={d.urls[p.storage_path]} alt={p.title} /></div>}
+        {note && <p className="photo-note">{noteBy?.role === 'elder' ? '내가 남긴 설명' : `${noteBy?.display_name} 님 설명`}: &quot;{note.text}&quot;</p>}
+      </>
+    );
+  }
+
   // ---------- 장면별 화면 ----------
   function viewFor(sc) {
     switch (sc.type) {
@@ -242,19 +304,28 @@ export default function ElderPage() {
           bar: bar(false)
         };
       }
-      case 'talk': {
-        const n = nodeOf(sc.node);
-        const p = talk.current.photo;
-        const note = p && d.notes.find((x) => x.photo_id === p.id);
-        const noteBy = note && who(note.author);
+      case 'ai': {
+        const skip = () => { skipTopic(talk.current.photo.title); goTalk('mood', '알겠어요, 다른 이야기 해요. '); };
+        if (sc.loading) return { say: '사진을 보고 있어요. 잠깐만요…', noSpeak: sc.history.length > 0,middle: photoBlock(), bar: bar(true, skip) };
+        const n = sc.turn;
+        const KIND_ICON = { go: 'check', stop: 'x', help: 'question', pick: null };
         return {
           say: n.say,
-          middle: n.photo && p ? (
-            <>
-              {d.urls[p.storage_path] && <div className="photo"><img src={d.urls[p.storage_path]} alt={p.title} /></div>}
-              {note && <p className="photo-note">{noteBy?.role === 'elder' ? '내가 남긴 설명' : `${noteBy?.display_name} 님 설명`}: &quot;{note.text}&quot;</p>}
-            </>
-          ) : null,
+          middle: photoBlock(),
+          actions: n.options.map((o) => B(o.kind, KIND_ICON[o.kind], o.t, () => {
+            if (o.s) talk.current.utter.push({ text: o.s, quote: o.t });
+            const history = [...sc.history, { q: n.say, a: o.t }];
+            if (n.done || history.length >= 6) goTalk('wrap', '');
+            else aiTurn(history);
+          })),
+          bar: bar(true, skip)
+        };
+      }
+      case 'talk': {
+        const n = nodeOf(sc.node);
+        return {
+          say: n.say,
+          middle: n.photo ? photoBlock() : null,
           actions: n.opts.map((o) => B(o.kind, o.icon, o.t, () => {
             if (o.s) talk.current.utter.push({ text: o.s, quote: o.t });
             if (o.act === 'draft') return show({ type: 'draft', lines: talk.current.utter.map((u) => ({ ...u, keep: true })) });
@@ -361,7 +432,7 @@ export default function ElderPage() {
   const sayChanged = view.say !== lastSay.current;
   if (sayChanged) {
     lastSay.current = view.say;
-    pendingSpeak.current = view.speakText || view.say;
+    if (!view.noSpeak) pendingSpeak.current = view.speakText || view.say;
   }
 
   // ---------- 할 일 띠 ----------

@@ -42,7 +42,15 @@ npm run dev
 | `src/components/` | 아이콘, 몽실이 그림처럼 여러 화면에서 같이 쓰는 조각 |
 | `supabase/schema.sql` | 표 구조와 권한 규칙. 같은 가족만 보고, '나만 보기'는 어르신만 본다 |
 
+## 몽실이 AI
+사진 대화의 질문과 버튼은 서버(`src/app/api/talk/route.js`)가 AI에게 받아 온다. 규칙과 응답 검사는 `src/lib/ai.js`.
+AI가 꺼져 있거나 실패하면 자동으로 각본 대화(`src/app/elder/talk.js`)로 이어 간다.
+
+`.env.local` 에서 고른다 (바꾸면 `npm run dev` 를 다시 켠다):
+- `AI_PROVIDER=ollama` — 내 컴퓨터의 [Ollama](https://ollama.com). 처음 한 번 `ollama pull gemma3:4b`. 무료지만 내 컴퓨터에서만 동작, 이 노트북(CPU)에서 질문 하나에 10초 안팎(첫 질문은 사진을 읽느라 더 오래 걸려서 화면을 열 때 미리 요청해 둔다).
+- `AI_PROVIDER=gemini` + `GEMINI_API_KEY` — 배포된 사이트에서도 쓰려면 이쪽. Vercel 의 Environment Variables 에도 같은 값을 넣는다.
+
 ## 다음에 할 일
-- 몽실이에 실제 AI 연결 (`talk.js` 를 서버의 AI 호출로 교체)
+- 배포된 사이트에서도 AI 쓰기 (Gemini 등 클라우드 키, 또는 Ollama 터널)
 - 조원들의 '오늘의 생활' 기능과 `tasks` 표 맞추기
 - Vercel 에 배포해서 휴대폰·태블릿에서 주소로 접속
