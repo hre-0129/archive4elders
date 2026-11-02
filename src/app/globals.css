@@ -69,8 +69,11 @@ img { max-width: 100%; }
   @keyframes bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
 }
 
-.middle { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; justify-content: center; }
-.photo { border-radius: 18px; overflow: hidden; aspect-ratio: 4 / 3; width: 100%; max-width: 460px; align-self: center; background: var(--soft); }
+.middle { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; justify-content: safe center; }
+/* 가운데 내용은 줄어들지 않게 하고, 넘치면 가운데 칸 안에서 스크롤 */
+.middle > * { flex-shrink: 0; }
+/* 사진은 4:3 비율 그대로, 화면 높이의 40%를 넘지 않게 */
+.photo { border-radius: 18px; overflow: hidden; aspect-ratio: 4 / 3; width: min(100%, 460px, calc(40vh * 4 / 3)); align-self: center; background: var(--soft); }
 .photo img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .photo-note { align-self: center; max-width: 460px; width: 100%; font-size: 20px; color: var(--muted); }
 
@@ -107,6 +110,25 @@ img { max-width: 100%; }
 .bar { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 10px; }
 .bar .ans { min-height: 70px; font-size: 21px; padding: 8px 10px; justify-content: center; gap: 8px; text-align: center; }
 .bar .ans .i { font-size: 26px; }
+
+/* 휴대폰: 글씨와 버튼을 조금 줄여 사진 자리를 확보 (그래도 충분히 크게) */
+@media (max-width: 480px) {
+  .elder .app { gap: 10px; padding-block: 10px 12px; }
+  .mascot { width: 72px; height: 61px; }
+  .bubble { font-size: 23px; padding: 14px 16px; }
+  .ans { min-height: 68px; font-size: 23px; padding: 8px 18px; border-radius: 20px; }
+  .ans .i { font-size: 28px; }
+  .bar .ans { min-height: 62px; font-size: 16px; flex-direction: column; gap: 2px; padding: 6px 4px; white-space: nowrap; }
+  .bar .ans .i { font-size: 24px; }
+  .top { font-size: 15px; }
+  .top > span:first-child { white-space: nowrap; }
+  .mini { min-height: 42px; padding: 4px 12px; font-size: 15px; white-space: nowrap; }
+  .strip { gap: 6px; }
+  .tchip { font-size: 16px; padding: 6px 10px; }
+  .taskbig { padding: 20px; }
+  .taskbig .what { font-size: 30px; }
+  .photo-note { font-size: 17px; }
+}
 
 /* ---------- 가족 화면 · 로그인 (보통 크기) ---------- */
 .page { max-width: 720px; margin: 0 auto; padding-block: 20px 120px; font-size: 18px; display: flex; flex-direction: column; gap: 18px; }

@@ -328,10 +328,10 @@ export default function ElderPage() {
             B('soft', 'next', '다음', () => show({ type: 'book', idx: i + 1 }), i === list.length - 1)
           ],
           bar: [
-            B('go', 'chat', '몽실이와 이야기', () => toIdle('이야기책을 다 봤어요. ')),
+            B('go', 'chat', '이야기하기', () => toIdle('이야기책을 다 봤어요. ')),
             s.visibility === 'family'
-              ? B('soft', 'lock', '나만 보기로', () => setVisibility(s.id, 'me'))
-              : B('soft', 'people', '가족에게 보여 주기', () => setVisibility(s.id, 'family')),
+              ? B('soft', 'lock', '나만 보기', () => setVisibility(s.id, 'me'))
+              : B('soft', 'people', '가족에게', () => setVisibility(s.id, 'family')),
             B('stop', 'trash', '지우기', () => show({ ...sc, del: true }))
           ]
         };
