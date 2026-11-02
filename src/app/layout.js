@@ -1,7 +1,8 @@
-import { Noto_Sans_KR } from 'next/font/google';
 import './globals.css';
 
-const noto = Noto_Sans_KR({ subsets: ['latin'], weight: ['500', '700', '900'], variable: '--font-noto', display: 'swap' });
+// 글꼴은 빌드할 때 받지 않고 브라우저가 구글 폰트에서 직접 불러온다.
+// (next/font 로 빌드 때 받으면 구글 폰트 응답에 따라 Vercel 배포가 실패할 때가 있었다)
+const FONT_URL = 'https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@500;700;900&display=swap';
 
 export const metadata = {
   title: '기억 아카이브',
@@ -12,7 +13,13 @@ export const viewport = { width: 'device-width', initialScale: 1, viewportFit: '
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="ko" className={noto.variable}>
+    <html lang="ko">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+        {/* eslint-disable-next-line @next/next/no-page-custom-font */}
+        <link rel="stylesheet" href={FONT_URL} />
+      </head>
       <body>{children}</body>
     </html>
   );
