@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "ai:gate": "node scripts/ollama-gate.mjs",
+    "ai:tunnel": "cloudflared tunnel --url http://127.0.0.1:11435"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.118.0",

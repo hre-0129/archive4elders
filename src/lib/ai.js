@@ -72,9 +72,11 @@ async function callGemini({ system, user, image }) {
 async function callOllama({ system, user, image }) {
   const base = (process.env.OLLAMA_URL || 'http://localhost:11434').replace(/\/$/, '');
   const model = process.env.OLLAMA_MODEL || 'gemma3:4b';
+  // 터널로 내 컴퓨터의 Ollama 를 부를 때는 문지기(scripts/ollama-gate.mjs) 비밀번호를 함께 보낸다
+  const token = process.env.OLLAMA_TOKEN;
   const res = await fetch(`${base}/api/chat`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: JSON.stringify({
       model, stream: false, format: SCHEMA, keep_alive: '30m',
       options: { temperature: 0.6, num_predict: 300 },

@@ -10,6 +10,8 @@ const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY;
 
 const MAX_TURNS = 8;
+// 내 컴퓨터의 Ollama 는 첫 질문(사진 읽기)에 40초쯤 걸리므로 Vercel 이 중간에 끊지 않게 넉넉히
+export const maxDuration = 60;
 const fail = (status, error) => Response.json({ error }, { status });
 
 export async function POST(req) {
