@@ -22,11 +22,13 @@ const P = {
   walk: <><circle cx="13" cy="4.5" r="1.8" /><path d="M10 21l2-6-2.5-2.5L11 8l4 3 3 1M9.5 12.5L7 14M13 15l3 6" /></>,
   photo: <><rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="9" cy="10" r="2" /><path d="M21 16l-5-5-8 8" /></>,
   plus: <path d="M12 5v14M5 12h14" />,
+  leaf: <><path d="M5 19c0-8 6-14 15-14 0 9-6 15-14 15" /><path d="M5 19l8-8" /></>,
   gear: <><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1L7 17M17 7l2.1-2.1" /></>,
   logout: <><path d="M14 4h5v16h-5" /><path d="M10 8l-4 4 4 4M6 12h10" /></>
 };
 
 export const TASK_ICONS = ['pill', 'music', 'phone', 'walk', 'pot', 'calendar'];
+export const ACTIVITY_ICONS = ['chat', 'music', 'photo', 'leaf', 'walk', 'pot', 'phone', 'book'];
 
 export default function Icon({ name, className = '' }) {
   if (!name || !P[name]) return null;

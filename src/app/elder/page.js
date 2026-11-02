@@ -1,15 +1,34 @@
 'use client';
 // 어르신 화면. 화면은 하나이고, 몽실이가 '장면(scene)'을 하나씩 바꿔 가며 말을 건다.
-// 들어오면: 인사 → 오늘 할 일 하나씩 → 새 가족 답장 → 사진 이야기 → 쉬기(idle)
+// 들어오면: 인사 → 오늘 할 일 하나씩 → 새 가족 답장 → 지금 마음 3가지 → 활동 추천 → 활동 → 활동 후 마음 기록 → 쉬기(idle)
+// (활동 표가 아직 없으면 예전처럼 마음 묻기 대신 바로 사진 이야기로)
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase, signedUrls, today, koreanDate } from '@/lib/supabase';
 import { useMember } from '@/lib/useMember';
+import { loadActivities } from '@/lib/activities';
+import { recommend, classifyChange, MOOD_KEYS } from '@/lib/recommend';
 import Icon from '@/components/Icon';
 import Mascot from '@/components/Mascot';
 import { talkNode } from './talk';
 
 const callName = (n = '') => (n.length === 3 ? n.slice(1) : n); // 김순자 → 순자
+
+// 마음 묻기 3가지 (조원 설계: 1 전혀 그렇지 않음 ~ 5 매우 그러함)
+const MOOD_Q = {
+  lonely: '지금 외로운 마음이 드세요?',
+  positive: '지금 기분이 좋으세요?',
+  tense: '지금 마음이 긴장되거나 불안하세요?'
+};
+const SCALE = ['전혀 아니에요', '별로 아니에요', '보통이에요', '조금 그래요', '매우 그래요'];
+const SATISFY = ['아주 별로였어요', '별로였어요', '보통이었어요', '좋았어요', '아주 좋았어요'];
+const RECENT_MOOD_MIN = 60; // 활동 후 마음을 기록한 지 60분 안이면, 다음 활동 전에 다시 묻지 않는다
+
+// 받침에 맞는 조사: josa('대화하기', '은', '는') → '는',  josa('산책', '을', '를') → '을'
+function josa(word, withBatchim, without) {
+  const c = word.charCodeAt(word.length - 1) - 0xac00;
+  return c >= 0 && c <= 11171 && c % 28 !== 0 ? withBatchim : without;
+}
 
 function speakOut(text, on) {
   if (!on) return;
@@ -27,17 +46,20 @@ function dateLabel(iso) {
 }
 
 async function loadAll(fid) {
-  const [tasks, photos, notes, stories, replies, skipped] = await Promise.all([
+  const [tasks, photos, notes, stories, replies, skipped, act] = await Promise.all([
     supabase.from('tasks').select('*').eq('family_id', fid).order('created_at'),
     supabase.from('photos').select('*').eq('family_id', fid).order('created_at', { ascending: false }),
     supabase.from('photo_notes').select('*').order('created_at'),
     supabase.from('stories').select('*').eq('family_id', fid).order('created_at', { ascending: false }),
     supabase.from('replies').select('*').order('created_at'),
-    supabase.from('skipped_topics').select('*').eq('family_id', fid)
+    supabase.from('skipped_topics').select('*').eq('family_id', fid),
+    loadActivities(fid)
   ]);
   const d = {
     tasks: tasks.data || [], photos: photos.data || [], notes: notes.data || [],
-    stories: stories.data || [], replies: replies.data || [], skipped: (skipped.data || []).map((s) => s.topic)
+    stories: stories.data || [], replies: replies.data || [], skipped: (skipped.data || []).map((s) => s.topic),
+    activities: act ? act.activities : null, // null 이면 기분·활동 기능 꺼짐
+    activityLogs: act ? act.logs : []
   };
   d.urls = await signedUrls([...d.photos.map((p) => p.storage_path), ...d.replies.map((r) => r.photo_path)]);
   return d;
@@ -73,6 +95,8 @@ export default function ElderPage() {
   const aiReq = useRef(0);      // 늦게 도착한 AI 응답을 버리기 위한 번호
   const aiOff = useRef(false);  // AI가 안 되면 이번 접속 동안은 각본 대화만 쓴다
   const prefetch = useRef(null); // { photoId, promise } 첫 AI 질문을 미리 받아 두는 곳
+  const activity = useRef(null); // 지금 하는 활동 { act, pre, score, rank, startedAt } — 끝나면 기록하고 비운다
+  const lastPost = useRef(null); // 마지막 활동 후 마음 { mood, at } — 바로 다음 활동의 '활동 전 마음'으로 다시 쓴다
   const touched = useRef(false);
   const lastSay = useRef('');
   const pendingSpeak = useRef('');
@@ -104,7 +128,7 @@ export default function ElderPage() {
       setQueue([
         ...todo.map((t) => ({ type: 'task', id: t.id })),
         ...unseen.map((r) => ({ type: 'reply', id: r.id })),
-        { type: 'photoStart' }
+        { type: data.activities ? 'moodStart' : 'photoStart' }
       ]);
       setScene({ type: 'hello', hasTasks: todo.length > 0 });
       // 할 일을 확인하는 동안 첫 사진 질문을 미리 받아 둔다 (내 컴퓨터 AI는 사진 읽기가 느려서)
@@ -145,7 +169,45 @@ export default function ElderPage() {
     setQueue(rest);
     if (!next) return show({ type: 'idle' }, pre);
     if (next.type === 'photoStart') return startTalk(pre);
+    if (next.type === 'moodStart') return startMood(pre);
     show(next, pre);
+  }
+
+  // ---------- 기분·활동 ----------
+  // 활동 전 마음 묻기. 방금 활동 후 마음을 기록했다면 그걸 그대로 쓰고 바로 추천으로.
+  function startMood(pre = '') {
+    const recent = lastPost.current && Date.now() - lastPost.current.at < RECENT_MOOD_MIN * 60000;
+    if (recent) return show({ type: 'recommend', mood: lastPost.current.mood }, pre);
+    show({ type: 'moodQ', phase: 'pre', idx: 0, answers: {} }, pre + '활동을 고르기 전에 지금 마음을 여쭤볼게요. ');
+  }
+
+  // 활동 중이었다면 '활동 후 마음'으로, 아니면 쉬기로
+  function finishOrIdle(pre = '') {
+    if (activity.current) return show({ type: 'moodQ', phase: 'post', idx: 0, answers: {} }, pre + '하고 나니 마음이 어떠세요? ');
+    show({ type: 'idle' }, pre);
+  }
+
+  function chooseActivity(rec, rank, mood) {
+    activity.current = { act: rec.activity, pre: mood, score: rec.score, rank, startedAt: new Date().toISOString() };
+    if (rec.activity.mode === 'photo_talk') return startTalk('좋아요, 사진을 같이 봐요. ');
+    show({ type: 'doing' });
+  }
+
+  async function saveActivity(post, satisfaction, rejoin) {
+    const { act, pre, score, rank, startedAt } = activity.current;
+    activity.current = null;
+    lastPost.current = { mood: post, at: Date.now() };
+    const result = classifyChange(pre, post);
+    const row = {
+      family_id: fid, activity_id: act.id,
+      pre_lonely: pre.lonely, pre_positive: pre.positive, pre_tense: pre.tense,
+      post_lonely: post.lonely, post_positive: post.positive, post_tense: post.tense,
+      satisfaction, rejoin, improved_all: result.all, rec_score: score, rec_rank: rank, started_at: startedAt
+    };
+    show({ type: 'actDone', result, name: act.name });
+    const { data, error } = await supabase.from('activity_logs').insert(row).select().single();
+    if (error) console.warn('활동 기록 저장 실패:', error.message);
+    else setD((prev) => ({ ...prev, activityLogs: [data, ...prev.activityLogs] }));
   }
 
   function startTalk(pre = '') {
@@ -182,10 +244,12 @@ export default function ElderPage() {
 
   function goTalk(key, pre = '') {
     if (key === 'look' && !aiOff.current) return aiTurn([], pre);
+    // 활동으로 사진을 보던 중이면, 각본의 "오늘 기분은?" 대신 활동 후 마음 기록으로 바로 간다
+    if (key === 'mood' && activity.current) return finishOrIdle(pre);
     let n = nodeOf(key);
     while (n.topic && d.skipped.includes(n.topic) && n.skipNext) { key = n.skipNext; n = nodeOf(key); }
     if (key === 'wrap' && !talk.current.utter.length) key = 'bye';
-    if (key === 'bye') return show({ type: 'idle' }, pre || '이야기해 주셔서 고마워요. ');
+    if (key === 'bye') return finishOrIdle(pre || '이야기해 주셔서 고마워요. ');
     show({ type: 'talk', node: key }, pre);
   }
 
@@ -231,9 +295,14 @@ export default function ElderPage() {
   if (!d || !scene) return <main className="center"><p className="muted" style={{ fontSize: 24 }}>몽실이를 부르는 중…</p></main>;
 
   // ---------- 버튼 만들기 ----------
-  const B = (kind, icon, label, onClick, disabled = false) => ({ kind, icon, label, onClick, disabled });
+  const B = (kind, icon, label, onClick, disabled = false, sub = '') => ({ kind, icon, label, onClick, disabled, sub });
   const again = () => speakOut(view.speakText || view.say, sound);
-  const toIdle = (pre) => show({ type: 'idle' }, pre);
+  const toIdle = (pre) => finishOrIdle(pre);
+  // 마음 묻기 중의 '그만': 활동을 기록하지 않고 쉬기로
+  const cancelBar = () => [
+    B('help', 'speaker', '다시 듣기', again),
+    B('stop', 'stop', '그만', () => { activity.current = null; show({ type: 'idle' }, '알겠어요, 쉬어요. '); })
+  ];
   const bar = (canSkip, onSkip) => [
     B('help', 'speaker', '다시 듣기', again),
     canSkip && B('soft', 'skip', '다른 이야기', onSkip),
@@ -407,6 +476,71 @@ export default function ElderPage() {
           ]
         };
       }
+      case 'moodQ': {
+        const key = MOOD_KEYS[sc.idx];
+        return {
+          say: MOOD_Q[key],
+          middle: <p className="progress">{sc.idx + 1} / 3</p>,
+          actions: SCALE.map((label, i) => B('pick', null, label, () => {
+            const answers = { ...sc.answers, [key]: i + 1 };
+            if (sc.idx < 2) return show({ ...sc, idx: sc.idx + 1, answers });
+            if (sc.phase === 'pre') return show({ type: 'recommend', mood: answers });
+            show({ type: 'satisfy', post: answers });
+          })),
+          scale: true,
+          bar: cancelBar()
+        };
+      }
+      case 'recommend': {
+        // 사진이 남아 있지 않으면 '사진 보기'는 추천하지 않는다
+        const usable = d.activities.filter((a) => a.active && (a.mode !== 'photo_talk' || nextPhoto(d)));
+        const top = recommend(sc.mood, usable, d.activityLogs).slice(0, 3);
+        return {
+          say: '지금 마음에는 이런 활동이 좋겠어요.',
+          speakText: '지금 마음에는 이런 활동이 좋겠어요. ' + top.map((r, i) => `${i + 1}번, ${r.activity.name}. ${r.reason}.`).join(' '),
+          actions: [
+            ...top.map((r, i) => B('pick', r.activity.icon, `${r.activity.name} · ${r.score}점`, () => chooseActivity(r, i + 1, sc.mood), false, r.reason)),
+            B('stop', 'x', '다음에 할래요', () => show({ type: 'idle' }, '알겠어요. '))
+          ],
+          bar: [B('help', 'speaker', '다시 듣기', again)]
+        };
+      }
+      case 'doing': {
+        const a = activity.current?.act;
+        if (!a) return viewFor({ type: 'idle' });
+        return {
+          say: a.guide || `'${a.name}'${josa(a.name, '을', '를')} 해 보세요. 다 하시면 초록 버튼을 눌러 주세요.`,
+          middle: <div className="taskbig"><Icon name={a.icon} /><span className="what">{a.name}</span></div>,
+          actions: [
+            B('go', 'check', '다 했어요', () => finishOrIdle('수고하셨어요! ')),
+            B('stop', 'x', '그만할래요', () => { activity.current = null; show({ type: 'idle' }, '알겠어요, 다음에 해요. '); })
+          ],
+          bar: [B('help', 'speaker', '다시 듣기', again)]
+        };
+      }
+      case 'satisfy':
+        return {
+          say: (() => { const n = activity.current?.act.name ?? '활동'; return `오늘 '${n}'${josa(n, '은', '는')} 어떠셨어요?`; })(),
+          actions: SATISFY.map((label, i) => B('pick', null, label, () => show({ type: 'rejoin', post: sc.post, satisfaction: i + 1 }))),
+          scale: true,
+          bar: cancelBar()
+        };
+      case 'rejoin':
+        return {
+          say: '다음에도 또 하고 싶으세요?',
+          actions: [
+            B('go', 'check', '네, 또 할래요', () => saveActivity(sc.post, sc.satisfaction, true)),
+            B('stop', 'x', '아니요', () => saveActivity(sc.post, sc.satisfaction, false))
+          ],
+          bar: cancelBar()
+        };
+      case 'actDone':
+        return {
+          say: sc.result.all ? '하고 나서 마음이 한결 나아지셨네요! 기록해 둘게요.'
+            : sc.result.any ? '조금 나아진 마음도 있네요. 기록해 둘게요.'
+            : '기록해 둘게요. 다음엔 더 잘 맞는 활동을 찾아 볼게요.',
+          actions: [B('go', 'check', '알겠어요', () => show({ type: 'idle' }))]
+        };
       case 'logout':
         return {
           say: '정말 나갈까요? 다시 들어오려면 가족의 도움이 필요해요.',
@@ -420,7 +554,9 @@ export default function ElderPage() {
         return {
           say: '또 이야기하고 싶으면 아래 버튼을 눌러 주세요.',
           actions: [
-            B('go', 'chat', '이야기 더 하기', () => startTalk()),
+            d.activities
+              ? B('go', 'chat', '오늘 할 활동 추천', () => startMood())
+              : B('go', 'chat', '이야기 더 하기', () => startTalk()),
             B('theme', 'book', '내 이야기책 보기', () => show({ type: 'book', idx: 0 }))
           ]
         };
@@ -443,7 +579,7 @@ export default function ElderPage() {
   const Btn = (b, k) => (
     <button key={k} className={`ans k-${b.kind}`} disabled={b.disabled}
       onClick={() => { touched.current = true; b.onClick(); }}>
-      <Icon name={b.icon} /><span>{b.label}</span>
+      <Icon name={b.icon} /><span>{b.label}{b.sub && <small className="sub">{b.sub}</small>}</span>
     </button>
   );
 
@@ -474,7 +610,7 @@ export default function ElderPage() {
           <div className="bubble" aria-live="polite">{view.say}</div>
         </div>
         <div className="middle">{view.middle}</div>
-        <div className="actions">
+        <div className={`actions ${view.scale ? 'scale' : ''}`}>
           {view.row && <div className="bar">{view.row.map(Btn)}</div>}
           {view.actions?.map(Btn)}
         </div>

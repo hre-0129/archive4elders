@@ -1,19 +1,22 @@
 'use client';
-// 가족 화면: 이야기(답장) / 사진 / 할 일 / 설정
+// 가족 화면: 이야기(답장) / 사진 / 할 일 / 활동(기분) / 설정
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase, signedUrls } from '@/lib/supabase';
 import { useMember } from '@/lib/useMember';
+import { loadActivities } from '@/lib/activities';
 import Icon from '@/components/Icon';
 import StoriesTab from './StoriesTab';
 import PhotosTab from './PhotosTab';
 import TasksTab from './TasksTab';
+import ActivitiesTab from './ActivitiesTab';
 import SettingsTab from './SettingsTab';
 
 const TABS = [
   { id: 'stories', label: '이야기', icon: 'book' },
   { id: 'photos', label: '사진', icon: 'photo' },
   { id: 'tasks', label: '할 일', icon: 'calendar' },
+  { id: 'activities', label: '활동', icon: 'leaf' },
   { id: 'settings', label: '설정', icon: 'gear' }
 ];
 
@@ -26,18 +29,20 @@ export default function FamilyPage() {
   const load = useCallback(async () => {
     if (!ctx.member) return;
     const fid = ctx.member.family_id;
-    const [photos, notes, stories, replies, tasks, skipped] = await Promise.all([
+    const [photos, notes, stories, replies, tasks, skipped, act] = await Promise.all([
       supabase.from('photos').select('*').eq('family_id', fid).order('created_at', { ascending: false }),
       supabase.from('photo_notes').select('*').order('created_at'),
       supabase.from('stories').select('*').eq('family_id', fid).order('created_at', { ascending: false }),
       supabase.from('replies').select('*').order('created_at'),
       supabase.from('tasks').select('*').eq('family_id', fid).order('created_at'),
-      supabase.from('skipped_topics').select('*').eq('family_id', fid)
+      supabase.from('skipped_topics').select('*').eq('family_id', fid),
+      loadActivities(fid)
     ]);
     const paths = [...(photos.data || []).map((p) => p.storage_path), ...(replies.data || []).map((r) => r.photo_path)];
     setData({
       photos: photos.data || [], notes: notes.data || [], stories: stories.data || [],
       replies: replies.data || [], tasks: tasks.data || [], skipped: skipped.data || [],
+      activities: act ? act.activities : null, activityLogs: act ? act.logs : [],
       urls: await signedUrls(paths)
     });
   }, [ctx.member]);
@@ -68,6 +73,7 @@ export default function FamilyPage() {
         {tab === 'stories' && <StoriesTab {...props} />}
         {tab === 'photos' && <PhotosTab {...props} />}
         {tab === 'tasks' && <TasksTab {...props} />}
+        {tab === 'activities' && <ActivitiesTab {...props} />}
         {tab === 'settings' && <SettingsTab {...props} />}
       </main>
       <nav className="tabs" aria-label="가족 메뉴">
