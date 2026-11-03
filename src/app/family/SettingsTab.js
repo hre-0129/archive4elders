@@ -52,7 +52,7 @@ export default function SettingsTab({ family, members, data, reload, reloadMembe
         <ul style={{ margin: 0, paddingLeft: '1.2em', display: 'flex', flexDirection: 'column', gap: 6 }}>
           <li>어르신이 고른 대답만 이야기책 문장으로 만들어요.</li>
           <li>가족이 남긴 사진 설명을 어르신의 기억처럼 말하지 않아요.</li>
-          <li>기억이 맞는지 시험하지 않아요.</li>
+          <li>이야기를 나눌 때는 기억이 맞는지 시험하지 않아요. 기억 연습은 가족이 만든 문제만, 하루 3개까지 여쭤봐요.</li>
           <li>저장과 공유는 어르신이 초록 버튼을 누른 다음에만 해요.</li>
         </ul>
       </section>

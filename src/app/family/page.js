@@ -1,5 +1,5 @@
 'use client';
-// 가족 화면: 이야기(답장) / 사진 / 할 일 / 활동(기분) / 설정
+// 가족 화면: 이야기(답장) / 사진 / 할 일 / 활동(기분) / 기억 연습 / 설정
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase, signedUrls } from '@/lib/supabase';
@@ -10,6 +10,7 @@ import StoriesTab from './StoriesTab';
 import PhotosTab from './PhotosTab';
 import TasksTab from './TasksTab';
 import ActivitiesTab from './ActivitiesTab';
+import ReviewTab from './ReviewTab';
 import SettingsTab from './SettingsTab';
 
 const TABS = [
@@ -17,6 +18,7 @@ const TABS = [
   { id: 'photos', label: '사진', icon: 'photo' },
   { id: 'tasks', label: '할 일', icon: 'calendar' },
   { id: 'activities', label: '활동', icon: 'leaf' },
+  { id: 'review', label: '기억', icon: 'question' },
   { id: 'settings', label: '설정', icon: 'gear' }
 ];
 
@@ -29,7 +31,7 @@ export default function FamilyPage() {
   const load = useCallback(async () => {
     if (!ctx.member) return;
     const fid = ctx.member.family_id;
-    const [photos, notes, stories, replies, tasks, skipped, act, talks] = await Promise.all([
+    const [photos, notes, stories, replies, tasks, skipped, act, talks, reviews, reviewLogs] = await Promise.all([
       supabase.from('photos').select('*').eq('family_id', fid).order('created_at', { ascending: false }),
       supabase.from('photo_notes').select('*').order('created_at'),
       supabase.from('stories').select('*').eq('family_id', fid).order('created_at', { ascending: false }),
@@ -37,7 +39,9 @@ export default function FamilyPage() {
       supabase.from('tasks').select('*').eq('family_id', fid).order('created_at'),
       supabase.from('skipped_topics').select('*').eq('family_id', fid),
       loadActivities(fid),
-      supabase.from('talk_sessions').select('*').eq('family_id', fid).order('started_at', { ascending: false })
+      supabase.from('talk_sessions').select('*').eq('family_id', fid).order('started_at', { ascending: false }),
+      supabase.from('review_items').select('*').eq('family_id', fid).order('created_at'),
+      supabase.from('review_logs').select('*').eq('family_id', fid).order('created_at', { ascending: false }).limit(500)
     ]);
     const paths = [...(photos.data || []).map((p) => p.storage_path), ...(replies.data || []).map((r) => r.photo_path)];
     setData({
@@ -45,7 +49,7 @@ export default function FamilyPage() {
       replies: replies.data || [], tasks: tasks.data || [], skipped: skipped.data || [],
       activities: act ? act.activities : null, activityLogs: act ? act.logs : [],
       talkSessions: talks.error ? null : talks.data, // null 이면 003 SQL 을 아직 안 돌린 것
-
+      reviews: reviews.error ? null : reviews.data, reviewLogs: reviewLogs.data || [], // null 이면 004 SQL 을 아직 안 돌린 것
       urls: await signedUrls(paths)
     });
   }, [ctx.member]);
@@ -78,6 +82,7 @@ export default function FamilyPage() {
         {tab === 'photos' && <PhotosTab {...props} />}
         {tab === 'tasks' && <TasksTab {...props} />}
         {tab === 'activities' && <ActivitiesTab {...props} />}
+        {tab === 'review' && <ReviewTab {...props} />}
         {tab === 'settings' && <SettingsTab {...props} />}
       </main>
       <nav className="tabs" aria-label="가족 메뉴">

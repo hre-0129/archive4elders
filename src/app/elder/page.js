@@ -1,6 +1,6 @@
 'use client';
 // 어르신 화면. 화면은 하나이고, 몽실이가 '장면(scene)'을 하나씩 바꿔 가며 말을 건다.
-// 들어오면: 인사 → 오늘 할 일 하나씩 → 새 가족 답장 → (오늘 처음이면 마음 한 페이지) → 사진 이야기
+// 들어오면: 인사 → 오늘 할 일 하나씩 → 새 가족 답장 → 기억 연습(날짜가 된 문제, 하루 3개까지) → (오늘 처음이면 마음 한 페이지) → 사진 이야기
 //          → 이야기책 → 활동 후 마음 한 페이지 → 쉬기(idle: 사진 이야기 더 / 다른 활동 추천 / 이야기책)
 // 마음 체크는 하루 한 번만 묻고, 그날 활동들은 가장 최근 마음을 '활동 전 마음'으로 쓴다.
 // (활동 표가 아직 없으면 마음 묻기 없이 바로 사진 이야기로)
@@ -12,6 +12,7 @@ import { loadActivities } from '@/lib/activities';
 import { recommend, classifyChange, MOOD_KEYS } from '@/lib/recommend';
 import { startLadder, nextLadder, MAX_TURNS } from '@/lib/ladder';
 import { newSession, addAnswer } from '@/lib/metrics';
+import { dueItems, shuffledChoices, grade, DONT_KNOW } from '@/lib/review';
 import Icon from '@/components/Icon';
 import Mascot from '@/components/Mascot';
 import { talkNode } from './talk';
@@ -59,20 +60,22 @@ function dateLabel(iso) {
 }
 
 async function loadAll(fid) {
-  const [tasks, photos, notes, stories, replies, skipped, act] = await Promise.all([
+  const [tasks, photos, notes, stories, replies, skipped, act, reviews] = await Promise.all([
     supabase.from('tasks').select('*').eq('family_id', fid).order('created_at'),
     supabase.from('photos').select('*').eq('family_id', fid).order('created_at', { ascending: false }),
     supabase.from('photo_notes').select('*').order('created_at'),
     supabase.from('stories').select('*').eq('family_id', fid).order('created_at', { ascending: false }),
     supabase.from('replies').select('*').order('created_at'),
     supabase.from('skipped_topics').select('*').eq('family_id', fid),
-    loadActivities(fid)
+    loadActivities(fid),
+    supabase.from('review_items').select('*').eq('family_id', fid)
   ]);
   const d = {
     tasks: tasks.data || [], photos: photos.data || [], notes: notes.data || [],
     stories: stories.data || [], replies: replies.data || [], skipped: (skipped.data || []).map((s) => s.topic),
     activities: act ? act.activities : null, // null 이면 기분·활동 기능 꺼짐
-    activityLogs: act ? act.logs : []
+    activityLogs: act ? act.logs : [],
+    reviews: reviews.error ? null : reviews.data // null 이면 004 SQL 을 아직 안 돌린 것 → 기억 연습 꺼짐
   };
   d.urls = await signedUrls([...d.photos.map((p) => p.storage_path), ...d.replies.map((r) => r.photo_path)]);
   return d;
@@ -160,6 +163,8 @@ export default function ElderPage() {
       setQueue([
         ...todo.map((t) => ({ type: 'task', id: t.id })),
         ...unseen.map((r) => ({ type: 'reply', id: r.id })),
+        // 기억 연습: 보기 순서는 여기서 한 번만 섞는다 (화면이 다시 그려져도 순서가 그대로이게)
+        ...dueItems(data.reviews || [], t0).map((it, k) => ({ type: 'review', id: it.id, choices: shuffledChoices(it), first: k === 0 })),
         { type: data.activities ? 'photoMain' : 'photoStart' }
       ]);
       setScene({ type: 'hello', hasTasks: todo.length > 0 });
@@ -198,10 +203,11 @@ export default function ElderPage() {
     setPrefix(pre); setScene(next);
   }
 
-  function advance(pre = '') {
-    const [next, ...rest] = queue;
+  function advance(pre = '', list = queue) {
+    const [next, ...rest] = list;
     setQueue(rest);
     if (!next) return show({ type: 'idle' }, pre);
+    if (next.type === 'review') return show({ ...next, at: Date.now() }, pre); // 대답 시간을 재려고 보인 시각을 남긴다
     if (next.type === 'photoStart') return startTalk(pre);
     if (next.type === 'photoMain') return photoMain(pre);
     show(next, pre);
@@ -340,6 +346,23 @@ export default function ElderPage() {
     show({ type: 'talk', node: key }, pre);
   }
 
+  // ---------- 기억 연습 ----------
+  // 채점하고 간격을 바꾼 뒤(review.js), 문제와 기록을 저장한다. 화면은 저장을 기다리지 않고 바로 넘어간다
+  async function answerReview(it, chosen, at) {
+    const g = grade(it, chosen, t0, at ? Date.now() - at : null);
+    show({ type: 'reviewAns', id: it.id, correct: g.correct, after: g.update.interval_days, dontKnow: chosen === DONT_KNOW });
+    setD((prev) => ({ ...prev, reviews: prev.reviews.map((x) => (x.id === it.id ? { ...x, ...g.update } : x)) }));
+    const [u, l] = await Promise.all([
+      supabase.from('review_items').update(g.update).eq('id', it.id),
+      supabase.from('review_logs').insert(g.log)
+    ]);
+    if (u.error || l.error) console.warn('기억 연습 저장 실패:', (u.error || l.error).message);
+  }
+  // '그만': 오늘 남은 기억 연습은 건너뛰고 다음 순서로 (간격은 그대로라 다음에 들어오면 다시 묻는다)
+  function skipReviews(pre) {
+    advance(pre, queue.filter((x) => x.type !== 'review'));
+  }
+
   // ---------- 저장 ----------
   async function markTask(id) {
     await supabase.from('tasks').update({ done_on: t0 }).eq('id', id);
@@ -459,6 +482,41 @@ export default function ElderPage() {
             B('stop', 'x', '괜찮아요', () => advance('알겠어요. '))
           ],
           bar: bar(false)
+        };
+      }
+      case 'review': {
+        const it = d.reviews.find((x) => x.id === sc.id);
+        const photo = it.kind === 'photo' && d.photos.find((p) => p.id === it.photo_id);
+        const picks = sc.choices.map((c) => B('pick', null, c, () => answerReview(it, c, sc.at)));
+        const hasPhoto = photo && d.urls[photo.storage_path];
+        return {
+          say: (sc.first ? '기억 연습 하나 해 볼까요? ' : '') + it.question,
+          speakText: (sc.first ? '기억 연습 하나 해 볼까요? ' : '') + it.question + ' ' + sc.choices.join(', ') + '.',
+          middle: hasPhoto ? <div className="photo"><img src={d.urls[photo.storage_path]} alt={photo.title} /></div> : null,
+          // 사진 문제는 사진이 잘 보이게 보기를 한 줄로 나란히, 생활 문제는 큰 버튼을 세로로
+          row: hasPhoto ? picks : null, rowClass: 'choices',
+          actions: [...(hasPhoto ? [] : picks), B('help', 'question', DONT_KNOW, () => answerReview(it, DONT_KNOW, sc.at))],
+          bar: [B('help', 'speaker', '다시 듣기', again), B('stop', 'stop', '그만', () => skipReviews('알겠어요, 다음에 해요. '))]
+        };
+      }
+      case 'reviewAns': {
+        // 틀려도 탓하지 않고 정답을 바로 보여 준다 (틀린 기억이 굳지 않게)
+        const it = d.reviews.find((x) => x.id === sc.id);
+        const photo = it.kind === 'photo' && d.photos.find((p) => p.id === it.photo_id);
+        const when = sc.after === 1 ? '내일' : `${sc.after}일 뒤에`;
+        return {
+          say: sc.correct
+            ? `맞아요, '${it.answer}'${josa(it.answer, '이에요', '예요')}! ${when} 다시 여쭤볼게요.`
+            : `${sc.dontKnow ? '괜찮아요.' : '아쉬워요, 괜찮아요.'} '${it.answer}'${josa(it.answer, '이에요', '예요')}. 같이 기억해 둬요. ${when} 다시 여쭤볼게요.`,
+          // 사진 문제면 사진과 정답을 같이 보여 준다 (둘을 함께 떠올리도록)
+          middle: (
+            <>
+              {photo && d.urls[photo.storage_path] && <div className="photo"><img src={d.urls[photo.storage_path]} alt={photo.title} /></div>}
+              <div className={`taskbig ${sc.correct ? 'done' : ''} ${photo ? 'slim' : ''}`}><Icon name={sc.correct ? 'check' : 'book'} /><span className="what">{it.answer}</span></div>
+            </>
+          ),
+          actions: [B('go', 'check', '알겠어요', () => advance())],
+          bar: [B('help', 'speaker', '다시 듣기', again)]
         };
       }
       case 'ai': {
@@ -733,7 +791,7 @@ export default function ElderPage() {
         </div>
         <div className="middle">{view.middle}</div>
         <div className={`actions ${view.scale ? 'scale' : ''}`}>
-          {view.row && <div className="bar">{view.row.map(Btn)}</div>}
+          {view.row && <div className={`bar ${view.rowClass || ''}`}>{view.row.map(Btn)}</div>}
           {view.actions?.map(Btn)}
         </div>
         {view.bar && <div className="bar">{view.bar.map(Btn)}</div>}
