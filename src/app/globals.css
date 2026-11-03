@@ -178,3 +178,9 @@ textarea.input { min-height: 96px; resize: vertical; }
 .choice button { min-height: 48px; padding: 8px 16px; border-radius: 999px; border: 0; background: var(--soft); cursor: pointer; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; }
 .choice button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
 .center { min-height: 100%; display: grid; place-items: center; }
+
+/* 가족 화면 '대화 방식 실험' 비교 표 */
+.metrics { width: 100%; border-collapse: collapse; font-size: 15px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.metrics th, .metrics td { padding: 8px 10px; text-align: right; border-bottom: 1px solid var(--soft-2); }
+.metrics th:first-child, .metrics td:first-child { text-align: left; }
+.metrics th { color: var(--muted); font-weight: 700; }

@@ -29,20 +29,23 @@ export default function FamilyPage() {
   const load = useCallback(async () => {
     if (!ctx.member) return;
     const fid = ctx.member.family_id;
-    const [photos, notes, stories, replies, tasks, skipped, act] = await Promise.all([
+    const [photos, notes, stories, replies, tasks, skipped, act, talks] = await Promise.all([
       supabase.from('photos').select('*').eq('family_id', fid).order('created_at', { ascending: false }),
       supabase.from('photo_notes').select('*').order('created_at'),
       supabase.from('stories').select('*').eq('family_id', fid).order('created_at', { ascending: false }),
       supabase.from('replies').select('*').order('created_at'),
       supabase.from('tasks').select('*').eq('family_id', fid).order('created_at'),
       supabase.from('skipped_topics').select('*').eq('family_id', fid),
-      loadActivities(fid)
+      loadActivities(fid),
+      supabase.from('talk_sessions').select('*').eq('family_id', fid).order('started_at', { ascending: false })
     ]);
     const paths = [...(photos.data || []).map((p) => p.storage_path), ...(replies.data || []).map((r) => r.photo_path)];
     setData({
       photos: photos.data || [], notes: notes.data || [], stories: stories.data || [],
       replies: replies.data || [], tasks: tasks.data || [], skipped: skipped.data || [],
       activities: act ? act.activities : null, activityLogs: act ? act.logs : [],
+      talkSessions: talks.error ? null : talks.data, // null 이면 003 SQL 을 아직 안 돌린 것
+
       urls: await signedUrls(paths)
     });
   }, [ctx.member]);
@@ -58,7 +61,8 @@ export default function FamilyPage() {
   if (!data) return <main className="center"><p className="muted">불러오는 중…</p></main>;
 
   const elder = ctx.members.find((m) => m.role === 'elder');
-  const props = { ...ctx, data, reload: load, elder, nameOf: (id) => ctx.members.find((m) => m.id === id) };
+  // reload: 화면 데이터 다시 읽기 / reloadMember: 가족 정보(대화 방식 설정 등) 다시 읽기
+  const props = { ...ctx, data, reload: load, reloadMember: ctx.reload, elder, nameOf: (id) => ctx.members.find((m) => m.id === id) };
 
   return (
     <>

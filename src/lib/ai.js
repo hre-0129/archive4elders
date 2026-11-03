@@ -22,7 +22,7 @@ export function systemPrompt({ elderName }) {
 }
 
 export function userPrompt({ photo, notes, history, skipped, level = 1, comfort = false }) {
-  const L = LEVELS[level];
+  const L = level ? LEVELS[level] : null; // null = 비교 실험의 '자유' 조건
   const lines = [
     `사진 제목: ${photo.title}`,
     photo.period && `시기(가족이 적음): ${photo.period}`,
@@ -31,7 +31,8 @@ export function userPrompt({ photo, notes, history, skipped, level = 1, comfort 
     skipped.length && `다시 묻지 않을 주제: ${skipped.join(', ')}`,
     ...history.map((h, i) => `${i + 1}. 몽실이: ${h.q} → 어르신: ${h.a}`),
     '',
-    `이번 질문 단계: ${L.name} — ${L.ask}. (예: "${L.example}" 처럼, 하지만 이 사진에 맞게 새로)`,
+    L ? `이번 질문 단계: ${L.name} — ${L.ask}. (예: "${L.example}" 처럼, 하지만 이 사진에 맞게 새로)`
+      : '이번 질문 단계: 자유 — 대화 흐름에 맞게 알아서 묻는다.',
     comfort && '앞의 대답이 힘든 기억이었다. 질문 앞에 짧게 공감하는 말을 넣고, 가볍게 묻는다.',
     history.length ? '다음 질문을 JSON으로.' : '첫 질문을 JSON으로.'
   ];

@@ -8,7 +8,8 @@ import { supabase, signedUrls, today, koreanDate } from '@/lib/supabase';
 import { useMember } from '@/lib/useMember';
 import { loadActivities } from '@/lib/activities';
 import { recommend, classifyChange, MOOD_KEYS } from '@/lib/recommend';
-import { startLadder, nextLadder } from '@/lib/ladder';
+import { startLadder, nextLadder, MAX_TURNS } from '@/lib/ladder';
+import { newSession, addAnswer } from '@/lib/metrics';
 import Icon from '@/components/Icon';
 import Mascot from '@/components/Mascot';
 import { talkNode } from './talk';
@@ -66,18 +67,25 @@ async function loadAll(fid) {
   return d;
 }
 
+// 대화 방식 비교 실험: 가족 설정(talk_mode)에 따라 이번 대화의 조건을 정한다. random 이면 반반 무작위.
+function pickCondition(mode = 'ladder') {
+  if (mode === 'random') return Math.random() < 0.5 ? 'ladder' : 'free';
+  return mode === 'free' ? 'free' : 'ladder';
+}
+
 // 다음에 이야기할 사진: AI 사용 허락, 아직 이야기책에 없음, 건너뛴 적 없음
 function nextPhoto(d) {
   return d.photos.find((p) => p.ai_allowed && !d.stories.some((s) => s.photo_id === p.id) && !d.skipped.includes(p.title));
 }
 
-// 서버(/api/talk)에 몽실이의 다음 질문을 요청. ladder: 회상 대화 사다리 상태 (어느 단계의 질문을 할지)
-async function fetchTurn(photoId, history, ladder = startLadder()) {
+// 서버(/api/talk)에 몽실이의 다음 질문을 요청.
+// ladder: 회상 대화 사다리 상태 (어느 단계의 질문을 할지). null 이면 '자유' 조건 — 단계 없이 AI가 알아서 묻는다
+async function fetchTurn(photoId, history, ladder) {
   const { data: { session } } = await supabase.auth.getSession();
   const res = await fetch('/api/talk', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
-    body: JSON.stringify({ photoId, history, level: ladder.level, comfort: ladder.comfort })
+    body: JSON.stringify({ photoId, history, level: ladder ? ladder.level : null, comfort: ladder ? ladder.comfort : false })
   });
   const body = await res.json();
   if (!res.ok) throw new Error(body.error);
@@ -98,6 +106,7 @@ export default function ElderPage() {
   const prefetch = useRef(null); // { photoId, promise } 첫 AI 질문을 미리 받아 두는 곳
   const activity = useRef(null); // 지금 하는 활동 { act, pre, score, rank, startedAt } — 끝나면 기록하고 비운다
   const lastPost = useRef(null); // 마지막 활동 후 마음 { mood, at } — 바로 다음 활동의 '활동 전 마음'으로 다시 쓴다
+  const lastTalkId = useRef(null); // 방금 저장한 대화 지표 id — '사진 보기' 활동 기록과 이어 붙이려고
   const touched = useRef(false);
   const lastSay = useRef('');
   const pendingSpeak = useRef('');
@@ -117,11 +126,19 @@ export default function ElderPage() {
   const who = useCallback((id) => ctx.members.find((m) => m.id === id), [ctx.members]);
 
   // ---------- 처음 불러오기 ----------
+  // 로그인 신호는 탭이 다시 보일 때·토큰을 갱신할 때도 다시 오므로, 같은 사람이면 한 번만 불러온다
+  // (안 그러면 그때마다 AI 첫 질문을 또 요청해서 노트북 Ollama 앞에 요청이 줄줄이 쌓인다)
+  const loadedFor = useRef(null);
+  const memberId = member?.id;
+  const role = member?.role;
+  const talkMode = ctx.family?.talk_mode;
   useEffect(() => {
     if (ctx.loading) return;
     if (!ctx.user) { router.replace('/login'); return; }
-    if (!member) { router.replace('/setup'); return; }
-    if (member.role !== 'elder') { router.replace('/family'); return; }
+    if (!memberId) { router.replace('/setup'); return; }
+    if (role !== 'elder') { router.replace('/family'); return; }
+    if (loadedFor.current === memberId) return;
+    loadedFor.current = memberId;
     loadAll(fid).then((data) => {
       setD(data);
       const todo = data.tasks.filter((t) => (!t.due_date || t.due_date === t0) && t.done_on !== t0);
@@ -133,14 +150,16 @@ export default function ElderPage() {
       ]);
       setScene({ type: 'hello', hasTasks: todo.length > 0 });
       // 할 일을 확인하는 동안 첫 사진 질문을 미리 받아 둔다 (내 컴퓨터 AI는 사진 읽기가 느려서)
+      // 이 사진의 대화 조건(사다리·자유)도 지금 정해 둔다 → 두 조건 모두 첫 질문을 똑같이 빨리 받는다 (공정한 비교)
       const p = nextPhoto(data);
       if (p) {
-        const promise = fetchTurn(p.id, []);
+        const cond = pickCondition(talkMode);
+        const promise = fetchTurn(p.id, [], cond === 'ladder' ? startLadder() : null);
         promise.catch(() => {});
-        prefetch.current = { photoId: p.id, promise };
+        prefetch.current = { photoId: p.id, promise, cond };
       }
     });
-  }, [ctx.loading, ctx.user, member, fid, router, t0]);
+  }, [ctx.loading, ctx.user, memberId, role, fid, router, t0, talkMode]);
 
   // 쉬는 동안 1분마다 새 답장이 있는지 확인
   useEffect(() => {
@@ -207,15 +226,48 @@ export default function ElderPage() {
     };
     show({ type: 'actDone', result, name: act.name });
     const { data, error } = await supabase.from('activity_logs').insert(row).select().single();
-    if (error) console.warn('활동 기록 저장 실패:', error.message);
-    else setD((prev) => ({ ...prev, activityLogs: [data, ...prev.activityLogs] }));
+    if (error) return console.warn('활동 기록 저장 실패:', error.message);
+    setD((prev) => ({ ...prev, activityLogs: [data, ...prev.activityLogs] }));
+    // '사진 보기' 활동이었다면, 그 대화 지표에 활동 전후 마음 기록을 이어 붙인다 (대화 방식별 정서 변화 비교용)
+    if (act.mode === 'photo_talk' && lastTalkId.current) {
+      await supabase.from('talk_sessions').update({ activity_log_id: data.id }).eq('id', lastTalkId.current);
+      lastTalkId.current = null;
+    }
   }
 
   function startTalk(pre = '') {
+    endTalk('stop'); // 끝나지 않은 대화가 있었다면 '그만'으로 기록
     const photo = nextPhoto(d);
-    talk.current = { utter: [], photo, ladder: startLadder() };
+    // 대화 조건: 미리 받아 둔 첫 질문이 이 사진 것이면 그때 정한 조건을, 아니면 지금 정한다. AI가 꺼졌으면 각본(script)
+    const cond = aiOff.current ? 'script'
+      : prefetch.current?.photoId === photo?.id ? prefetch.current.cond : pickCondition(ctx.family?.talk_mode);
+    talk.current = { utter: [], photo, ladder: startLadder(), cond, metrics: photo ? newSession(cond, photo.id) : null };
     if (!photo) return goTalk('mood', pre + '지금은 새로 볼 사진이 없어요. ');
     goTalk('start', pre);
+  }
+
+  // 대화 하나를 끝내며 지표를 저장 (한 번만). 대답이 하나도 없던 대화는 남기지 않는다.
+  async function endTalk(reason, story = null) {
+    const m = talk.current.metrics;
+    if (!m || m.ended) return;
+    m.ended = true;
+    if (!m.turns) return;
+    const { data, error } = await supabase.from('talk_sessions').insert({
+      family_id: fid, photo_id: m.photo_id, condition: m.condition, started_at: m.started_at, end_reason: reason,
+      turns: m.turns, picks: m.picks, helps: m.helps, heavies: m.heavies,
+      max_level: m.condition === 'ladder' && m.path.length ? Math.max(...m.path) : null,
+      path: m.path, history: m.history,
+      story_saved: Boolean(story), story_id: story?.id ?? null, story_lines: story?.lines ?? 0
+    }).select('id').single();
+    if (error) return console.warn('대화 지표 저장 실패:', error.message);
+    lastTalkId.current = data.id;
+  }
+
+  // 버튼 하나를 고를 때마다 지표에 더한다
+  function record(q, o, level) {
+    const m = talk.current.metrics;
+    if (!m || m.ended) return;
+    talk.current.metrics = { ...addAnswer(m, { q, a: o.t, kind: o.kind, tone: o.tone, level }), ended: false };
   }
 
   function nodeOf(key) {
@@ -233,12 +285,19 @@ export default function ElderPage() {
       // 첫 질문은 화면을 열 때 미리 요청해 둔 것이 있으면 그걸 쓴다
       const early = !history.length && prefetch.current?.photoId === photoId ? prefetch.current.promise : null;
       prefetch.current = null;
-      const body = await (early || fetchTurn(photoId, history, talk.current.ladder));
+      const ladder = talk.current.cond === 'ladder' ? talk.current.ladder : null;
+      const body = await (early || fetchTurn(photoId, history, ladder));
       if (id === aiReq.current) show({ type: 'ai', loading: false, history, turn: body }, pre, true);
     } catch (e) {
       console.warn('몽실이 AI 대신 각본 대화로 이어 가요:', e.message);
       if (id !== aiReq.current) return;
-      if (!history.length) { aiOff.current = true; goTalk('look', pre); }
+      if (!history.length) {
+        // 첫 질문부터 AI가 안 되면 각본 대화로. 지표의 조건도 각본(script)으로 바꾼다
+        aiOff.current = true;
+        talk.current.cond = 'script';
+        if (talk.current.metrics) talk.current.metrics.condition = 'script';
+        goTalk('look', pre);
+      }
       else goTalk('wrap', '');
     }
   }
@@ -250,7 +309,7 @@ export default function ElderPage() {
     let n = nodeOf(key);
     while (n.topic && d.skipped.includes(n.topic) && n.skipNext) { key = n.skipNext; n = nodeOf(key); }
     if (key === 'wrap' && !talk.current.utter.length) key = 'bye';
-    if (key === 'bye') return finishOrIdle(pre || '이야기해 주셔서 고마워요. ');
+    if (key === 'bye') { endTalk('done'); return finishOrIdle(pre || '이야기해 주셔서 고마워요. '); }
     show({ type: 'talk', node: key }, pre);
   }
 
@@ -280,7 +339,8 @@ export default function ElderPage() {
       family_id: fid, title: p ? p.title : '오늘의 이야기', category: '추억', photo_id: p?.id ?? null,
       lines: lines.map(({ text, quote }) => ({ text, quote })), visibility: 'me'
     }).select().single();
-    if (error) return show({ type: 'done', say: '저장하지 못했어요. 잠시 뒤에 다시 해 주세요.' });
+    if (error) { endTalk('error'); return show({ type: 'done', say: '저장하지 못했어요. 잠시 뒤에 다시 해 주세요.' }); }
+    endTalk('done', { id: data.id, lines: lines.length });
     setD((prev) => ({ ...prev, stories: [data, ...prev.stories] }));
     show({ type: 'share', id: data.id });
   }
@@ -307,7 +367,7 @@ export default function ElderPage() {
   const bar = (canSkip, onSkip) => [
     B('help', 'speaker', '다시 듣기', again),
     canSkip && B('soft', 'skip', '다른 이야기', onSkip),
-    B('stop', 'stop', '그만', () => toIdle('알겠어요, 쉬어요. '))
+    B('stop', 'stop', '그만', () => { endTalk('stop'); toIdle('알겠어요, 쉬어요. '); }) // 대화 중이 아니면 endTalk 는 아무 일도 안 한다
   ].filter(Boolean);
 
   // 지금 이야기하는 사진 + 가족 설명(누가 썼는지 함께)
@@ -375,23 +435,24 @@ export default function ElderPage() {
         };
       }
       case 'ai': {
-        const skip = () => { skipTopic(talk.current.photo.title); goTalk('mood', '알겠어요, 다른 이야기 해요. '); };
-        if (sc.loading) return { say: '사진을 보고 있어요. 잠깐만요…', noSpeak: sc.history.length > 0,middle: photoBlock(), bar: bar(true, skip) };
+        const skip = () => { endTalk('skip'); skipTopic(talk.current.photo.title); goTalk('mood', '알겠어요, 다른 이야기 해요. '); };
+        if (sc.loading) return { say: '사진을 보고 있어요. 잠깐만요…', noSpeak: sc.history.length > 0, middle: photoBlock(), bar: bar(true, skip) };
         const n = sc.turn;
         const KIND_ICON = { go: 'check', stop: 'x', help: 'question', pick: null };
+        const useLadder = talk.current.cond === 'ladder';
         return {
           say: n.say,
           middle: photoBlock(),
           actions: n.options.map((o) => B(o.kind, KIND_ICON[o.kind], o.t, () => {
             if (o.s) talk.current.utter.push({ text: o.s, quote: o.t });
+            record(n.say, o, useLadder ? talk.current.ladder.level : null);
             const history = [...sc.history, { q: n.say, a: o.t }];
-            // 고른 버튼(종류·밝기)으로 다음 질문 단계를 정한다
+            // 고른 버튼(종류·밝기)으로 다음 질문 단계를 정한다. '자유' 조건에서는 횟수 세기에만 쓴다
             talk.current.ladder = nextLadder(talk.current.ladder, { kind: o.kind, tone: o.tone });
-            if (n.done || talk.current.ladder.done) {
-              console.info('회상 대화 단계 경로:', talk.current.ladder.path.join(' → '), '/ 최고 단계', talk.current.ladder.maxLevel);
-              goTalk('wrap', '');
-            } else aiTurn(history, talk.current.ladder.comfort ? '그때 마음이 힘드셨겠어요. ' : '');
-            // 위로 말은 작은 AI가 빼먹기도 해서, 알고리즘이 직접 붙인다
+            const done = useLadder ? talk.current.ladder.done : talk.current.ladder.turns >= MAX_TURNS;
+            if (n.done || done) goTalk('wrap', '');
+            // 위로 말은 작은 AI가 빼먹기도 해서, 사다리 조건에서는 알고리즘이 직접 붙인다
+            else aiTurn(history, useLadder && talk.current.ladder.comfort ? '그때 마음이 힘드셨겠어요. ' : '');
           })),
           bar: bar(true, skip)
         };
@@ -403,10 +464,12 @@ export default function ElderPage() {
           middle: n.photo ? photoBlock() : null,
           actions: n.opts.map((o) => B(o.kind, o.icon, o.t, () => {
             if (o.s) talk.current.utter.push({ text: o.s, quote: o.t });
+            // 사진에 대한 질문(각본)의 대답만 지표에 넣는다 ("같이 볼까요?", "남길까요?" 같은 진행 질문은 빼고)
+            if (n.photo) record(n.say, o, null);
             if (o.act === 'draft') return show({ type: 'draft', lines: talk.current.utter.map((u) => ({ ...u, keep: true })) });
             goTalk(o.next, o.pre || '');
           })),
-          bar: bar(!!n.skipNext, () => { if (n.topic) skipTopic(n.topic); goTalk(n.skipNext, '알겠어요, 다른 이야기 해요. '); })
+          bar: bar(!!n.skipNext, () => { if (n.photo) endTalk('skip'); if (n.topic) skipTopic(n.topic); goTalk(n.skipNext, '알겠어요, 다른 이야기 해요. '); })
         };
       }
       case 'draft': {
@@ -422,7 +485,7 @@ export default function ElderPage() {
           )),
           actions: [
             B('go', 'book', '이대로 남기기', () => saveStory(kept), !kept.length),
-            B('stop', 'x', '남기지 않기', () => toIdle('알겠어요, 남기지 않을게요. '))
+            B('stop', 'x', '남기지 않기', () => { endTalk('done'); toIdle('알겠어요, 남기지 않을게요. '); })
           ],
           bar: bar(false)
         };

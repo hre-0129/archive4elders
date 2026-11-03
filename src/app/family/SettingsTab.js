@@ -1,10 +1,11 @@
 'use client';
-// 초대 코드, 가족 구성원, 다시 묻지 않을 주제, 로그아웃
+// 초대 코드, 가족 구성원, 다시 묻지 않을 주제, 대화 방식 실험, 로그아웃
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import TalkMetrics from './TalkMetrics';
 
-export default function SettingsTab({ family, members, data, reload }) {
+export default function SettingsTab({ family, members, data, reload, reloadMember }) {
   const router = useRouter();
   const [copied, setCopied] = useState(false);
 
@@ -45,6 +46,7 @@ export default function SettingsTab({ family, members, data, reload }) {
           </div>
         )) : <p className="muted">어르신이 대화 중 &apos;다른 이야기&apos;를 누르면 그 주제가 여기에 남고, 몽실이가 다시 묻지 않아요.</p>}
       </section>
+      <TalkMetrics family={family} data={data} reloadMember={reloadMember} />
       <section className="card">
         <h2>몽실이의 약속</h2>
         <ul style={{ margin: 0, paddingLeft: '1.2em', display: 'flex', flexDirection: 'column', gap: 6 }}>

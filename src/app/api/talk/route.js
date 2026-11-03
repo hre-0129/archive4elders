@@ -27,7 +27,8 @@ export async function POST(req) {
   if (!user) return fail(401, '로그인이 필요해요');
 
   const { photoId, history = [], level: rawLevel = 1, comfort = false } = await req.json().catch(() => ({}));
-  const level = Math.min(5, Math.max(1, Math.round(Number(rawLevel)) || 1)); // 질문 단계 1~5 (회상 대화 사다리)
+  // 질문 단계 1~5 (회상 대화 사다리). null 이면 비교 실험의 '자유' 조건 — 단계 없이 AI가 알아서 묻는다
+  const level = rawLevel === null ? null : Math.min(5, Math.max(1, Math.round(Number(rawLevel)) || 1));
   if (!Array.isArray(history) || history.length > MAX_TURNS) return fail(400, '대화가 너무 길어요');
 
   const { data: photo } = await db.from('photos').select('*').eq('id', photoId).single();
