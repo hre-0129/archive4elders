@@ -6,7 +6,7 @@
 // (활동 표가 아직 없으면 마음 묻기 없이 바로 사진 이야기로)
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase, signedUrls, today, koreanDate } from '@/lib/supabase';
+import { supabase, signedUrls, today, koreanDate, shortTitle } from '@/lib/supabase';
 import { useMember } from '@/lib/useMember';
 import { loadActivities } from '@/lib/activities';
 import { recommend, classifyChange, MOOD_KEYS } from '@/lib/recommend';
@@ -351,7 +351,7 @@ export default function ElderPage() {
   }
   async function addPlan(r) {
     const { data } = await supabase.from('tasks').insert({
-      family_id: fid, title: r.plan_title, short: r.plan_title.slice(0, 12), time_label: r.plan_time || '',
+      family_id: fid, title: r.plan_title, short: shortTitle(r.plan_title), time_label: r.plan_time || '',
       icon: 'calendar', due_date: r.plan_date, source: 'elder'
     }).select().single();
     if (data) setD((prev) => ({ ...prev, tasks: [...prev.tasks, data] }));

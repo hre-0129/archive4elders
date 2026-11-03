@@ -1,0 +1,156 @@
+<title>몽실이 시행착오 기록</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=JetBrains+Mono:wght@400&display=swap">
+<style>
+/* 레이아웃: 한 줄 읽기 폭의 기록장. 항목마다 문제 → 원인 → 한 일, 맨 위에 '기억할 것' */
+:root {
+  --bg: #ffffff;
+  --fg: #1f1d22;
+  --muted: #6b6672;
+  --line: #ece8ef;
+  --surface: #f7f5f9;
+  --pink: #e8578a;
+  --pink-soft: #fdeef4;
+  --font-body: "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #17151a; --fg: #ece9ef; --muted: #a39dab; --line: #2c2832; --surface: #201d24;
+    --pink: #f283aa; --pink-soft: #3a2230; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #17151a; --fg: #ece9ef; --muted: #a39dab; --line: #2c2832; --surface: #201d24;
+  --pink: #f283aa; --pink-soft: #3a2230; color-scheme: dark;
+}
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--font-body);
+  font-size: 16px; line-height: 1.7;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 40px 64px;
+}
+main { max-width: 680px; margin: 0 auto; display: grid; gap: 36px; }
+header { display: grid; gap: 6px; }
+h1 { font-size: 28px; font-weight: 700; margin: 0; text-wrap: balance; }
+.sub { color: var(--muted); margin: 0; }
+h2 { font-size: 13px; font-weight: 700; letter-spacing: .08em; color: var(--muted); margin: 0 0 12px; }
+.keep { background: var(--pink-soft); border-radius: 14px; padding: 20px 22px; }
+.keep h2 { color: var(--pink); }
+.keep ul { margin: 0; padding-left: 20px; display: grid; gap: 8px; }
+.log { display: grid; gap: 0; }
+.entry { border-top: 1px solid var(--line); padding-block: 18px; display: grid; gap: 6px; }
+.entry:last-child { border-bottom: 1px solid var(--line); }
+.entry h3 { font-size: 18px; font-weight: 700; margin: 0; text-wrap: balance; }
+.meta { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+dl { margin: 0; display: grid; grid-template-columns: 3.2em 1fr; gap: 4px 10px; }
+dt { font-size: 13px; font-weight: 700; color: var(--muted); padding-top: 3px; }
+dd { margin: 0; min-width: 0; }
+code { font-family: var(--font-mono); font-size: 13.5px; background: var(--surface); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+.tag { display: inline-block; font-size: 12px; font-weight: 500; color: var(--pink); border: 1px solid var(--pink); border-radius: 999px; padding: 0 8px; margin-left: 6px; vertical-align: 2px; }
+</style>
+
+<main>
+  <header>
+    <h1>몽실이 시행착오 기록</h1>
+    <p class="sub">기억 아카이브를 만들며 막혔던 것과 풀어낸 방법. 새로 생기면 아래에 덧붙인다.</p>
+  </header>
+
+  <section class="keep" aria-labelledby="keep-h">
+    <h2 id="keep-h">기억할 것</h2>
+    <ul>
+      <li><strong>AI 말투의 한계는 모델 크기 문제다.</strong> 지금은 gemma3:4b(노트북 CPU)라 한국어 활용이 약해서, 버튼 말을 목록에서 고르게 막아 두었다. 더 큰 모델(gemma3:12b 등)이나 클라우드 AI(Gemini, Claude)로 바꾸면 질문·버튼이 자연스러워지고 목록을 풀 수 있다.</li>
+      <li>사람·그날의 일 단계(L3·L4)는 아직 AI가 자유롭게 만든다. 여기서 어색한 말이 남아 있다.</li>
+      <li>이야기책 문장에 AI가 살짝 덧붙이는 일이 아직 있다 (예: "갈치가 많이 팔렸다").</li>
+      <li>터널 주소는 켤 때마다 바뀐다. 배포 사이트에서 AI를 쓰려면 Vercel <code>OLLAMA_URL</code>을 갱신하고 다시 배포해야 한다.</li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="log-h">
+    <h2 id="log-h">기록</h2>
+    <div class="log">
+
+      <article class="entry">
+        <h3>몽실이가 틀린 한국어를 말함 <span class="tag">AI</span></h3>
+        <div class="meta">2026-11-03</div>
+        <dl>
+          <dt>문제</dt><dd>"채소랑", "나 동네" 같은 낱말 버튼, "붉었요", "즐거우셨었군요" 같은 틀린 어미.</dd>
+          <dt>원인</dt><dd>작은 모델이 자료 낱말을 그대로 베끼고, 한국어 활용을 자주 틀린다.</dd>
+          <dt>한 일</dt><dd>① 규칙 검사: 버튼은 "~요" 문장만, 겹친 과거형 고치기, 받아 주는 말은 규칙으로("시끄러웠어요" → "시끄러웠군요"). ② 감각·느낌·의미 단계 버튼은 미리 적은 목록(<code>src/lib/answers.js</code>)에서만 고르게 하고, JSON 형식의 <code>enum</code>으로 목록 밖의 말은 못 쓰게 했다.</dd>
+        </dl>
+      </article>
+
+      <article class="entry">
+        <h3>"불러오는 중…"에서 멈춤 <span class="tag">개발 서버</span></h3>
+        <div class="meta">2026-11-03</div>
+        <dl>
+          <dt>문제</dt><dd>크롬에서 첫 화면이 넘어가지 않았다.</dd>
+          <dt>원인</dt><dd>개발 서버의 <code>.next</code> 캐시가 꼬여 화면용 JavaScript 파일이 404. HTML 글자만 보이고 프로그램이 돌지 않았다.</dd>
+          <dt>한 일</dt><dd>서버를 끄고 <code>.next</code> 폴더를 지운 뒤 <code>npm run dev</code>. 덤으로 로그인 정보 불러오기가 실패해도 갇히지 않게 고쳤다.</dd>
+        </dl>
+      </article>
+
+      <article class="entry">
+        <h3>설문만 나오고 사진 이야기가 얕음 <span class="tag">흐름</span></h3>
+        <div class="meta">2026-11-03</div>
+        <dl>
+          <dt>문제</dt><dd>마음 체크가 계속 나오고, 사진 질문은 "햇살이 어땠어요" 수준에서 맴돌았다.</dd>
+          <dt>원인</dt><dd>활동 추천이 앞에 서 있었고, 질문 깊이를 정하는 규칙이 없었다.</dd>
+          <dt>한 일</dt><dd>사진 이야기를 기본 흐름으로. 마음은 하루 한 번, 한 페이지로. 질문 깊이는 회상 사다리(감각 → 느낌 → 사람 → 그날의 일 → 의미)가 정하고, AI는 말만 만든다.</dd>
+        </dl>
+      </article>
+
+      <article class="entry">
+        <h3>가족 설명의 '할머니'를 다른 사람으로 착각 <span class="tag">AI</span></h3>
+        <div class="meta">2026-11-03</div>
+        <dl>
+          <dt>문제</dt><dd>어르신 본인에게 "할머니는 어떤 분이셨어요?"라고 묻거나, 할아버지 이름으로 불렀다.</dd>
+          <dt>원인</dt><dd>가족 설명은 손주 눈으로 쓴 글이라 '할머니'·'엄마'가 어르신 본인이다.</dd>
+          <dt>한 일</dt><dd>프롬프트에 그 사실을 적고, 본인을 가리키는 말은 자료 낱말에서 뺐다.</dd>
+        </dl>
+      </article>
+
+      <article class="entry">
+        <h3>첫 질문이 몇 분씩 걸림 <span class="tag">성능</span></h3>
+        <div class="meta">2026-11-03</div>
+        <dl>
+          <dt>문제</dt><dd>AI 첫 질문이 한참 뒤에야 나왔다.</dd>
+          <dt>원인</dt><dd>로그인 이벤트마다 화면 불러오기가 다시 돌아 미리 받기 요청이 줄줄이 쌓였다.</dd>
+          <dt>한 일</dt><dd>어르신 한 명당 한 번만 불러오게 막았다. CPU 모델이라 첫 질문(사진 포함)은 원래 30~40초라 화면을 열 때 미리 요청한다.</dd>
+        </dl>
+      </article>
+
+      <article class="entry">
+        <h3>배포 사이트에서 AI가 안 됨 <span class="tag">배포</span></h3>
+        <div class="meta">2026-11-03</div>
+        <dl>
+          <dt>문제</dt><dd>배포 사이트는 각본 대화만 나왔다.</dd>
+          <dt>원인</dt><dd><code>OLLAMA_TOKEN</code> 값이 비어 있어 문지기가 요청을 거절했다.</dd>
+          <dt>한 일</dt><dd>토큰을 다시 만들어 Vercel에 넣고, 문지기가 거절할 때 이유를 적게 했다.</dd>
+        </dl>
+      </article>
+
+      <article class="entry">
+        <h3>Vercel 빌드 실패 <span class="tag">배포</span></h3>
+        <div class="meta">2026-11-03</div>
+        <dl>
+          <dt>문제</dt><dd>배포 빌드가 글꼴 단계에서 멈췄다.</dd>
+          <dt>원인</dt><dd><code>next/font</code>가 빌드 중에 글꼴을 받아 오지 못했다.</dd>
+          <dt>한 일</dt><dd>Google Fonts를 <code>&lt;link&gt;</code> 태그로 불러오게 바꿨다.</dd>
+        </dl>
+      </article>
+
+      <article class="entry">
+        <h3>조사 떼기가 낱말을 망가뜨림 <span class="tag">알고리즘</span></h3>
+        <div class="meta">2026-11-03</div>
+        <dl>
+          <dt>문제</dt><dd>"나들이"가 "나들"로, "채소랑"은 그대로 남았다.</dd>
+          <dt>원인</dt><dd>끝 글자만 보고 조사를 뗐다.</dd>
+          <dt>한 일</dt><dd>받침 유무로 판단한다 (유니코드 <code>(코드 − 0xAC00) % 28</code>이 받침 번호). "랑·이랑·하고"도 조사 목록에 넣었다.</dd>
+        </dl>
+      </article>
+
+    </div>
+  </section>
+</main>

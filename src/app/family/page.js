@@ -69,7 +69,7 @@ export default function FamilyPage() {
       <main className="page">
         <div className="head">
           <div>
-            <p className="muted">{ctx.family.name}</p>
+            <p className="muted">{ctx.family?.name}</p>
             <h1>{TABS.find((t) => t.id === tab).label}</h1>
           </div>
           <span className="badge pink">{ctx.member.display_name} · {ctx.member.relation}</span>

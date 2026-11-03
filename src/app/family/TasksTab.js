@@ -2,7 +2,7 @@
 // 어르신의 할 일 관리. 몽실이가 대화 처음에 하나씩 여쭤본다.
 // ('오늘의 생활' 기능을 조원이 만들면 이 화면은 그쪽으로 연결한다)
 import { useState } from 'react';
-import { supabase, today } from '@/lib/supabase';
+import { supabase, today, shortTitle } from '@/lib/supabase';
 import Icon, { TASK_ICONS } from '@/components/Icon';
 
 const ICON_LABEL = { pill: '약', music: '모임', phone: '통화', walk: '운동', pot: '요리', calendar: '기타' };
@@ -18,7 +18,7 @@ export default function TasksTab({ data, member, reload }) {
     if (!f.title.trim()) return setMsg('할 일을 적어 주세요.');
     if (!f.daily && !f.due_date) return setMsg('날짜를 골라 주세요.');
     const { error } = await supabase.from('tasks').insert({
-      family_id: member.family_id, title: f.title.trim(), short: f.short.trim() || f.title.trim().slice(0, 6),
+      family_id: member.family_id, title: f.title.trim(), short: f.short.trim() || shortTitle(f.title.trim(), 6),
       time_label: f.time_label.trim(), icon: f.icon, due_date: f.daily ? null : f.due_date, source: 'family'
     });
     if (error) return setMsg(error.message);

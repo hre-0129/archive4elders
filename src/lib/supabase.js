@@ -32,3 +32,11 @@ export function today() {
 export function koreanDate(d = new Date()) {
   return new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', month: 'long', day: 'numeric', weekday: 'long' }).format(d);
 }
+
+// 할 일 칩에 쓸 짧은 제목: max 자를 넘으면 낱말 중간이 아니라 띄어쓰기에서 자른다
+// ("하은이와 떡 만들기", max 8 → "하은이와 떡"). 띄어쓰기가 없으면 그냥 max 자에서 자른다
+export function shortTitle(t, max = 12) {
+  if (t.length <= max) return t;
+  const cut = t.slice(0, max + 1).lastIndexOf(' ');
+  return cut > 0 ? t.slice(0, cut) : t.slice(0, max);
+}
