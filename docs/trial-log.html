@@ -63,13 +63,23 @@ code { font-family: var(--font-mono); font-size: 13.5px; background: var(--surfa
       <li><strong>AI 말투의 한계는 모델 크기 문제다.</strong> 지금은 gemma3:4b(노트북 CPU)라 한국어 활용이 약해서, 버튼 말을 목록에서 고르게 막아 두었다. 더 큰 모델(gemma3:12b 등)이나 클라우드 AI(Gemini, Claude)로 바꾸면 질문·버튼이 자연스러워지고 목록을 풀 수 있다.</li>
       <li>사람·그날의 일 단계(L3·L4)는 아직 AI가 자유롭게 만든다. 여기서 어색한 말이 남아 있다.</li>
       <li>이야기책 문장에 AI가 살짝 덧붙이는 일이 아직 있다 (예: "갈치가 많이 팔렸다").</li>
-      <li>터널 주소는 켤 때마다 바뀐다. 배포 사이트에서 AI를 쓰려면 Vercel <code>OLLAMA_URL</code>을 갱신하고 다시 배포해야 한다.</li>
+      <li>터널 주소는 켤 때마다 바뀐다. 배포 사이트에서 AI를 쓰려면 Vercel <code>OLLAMA_URL</code>을 갱신하고 다시 배포해야 한다. 고정 터널은 보류했다 (아래 기록).</li>
     </ul>
   </section>
 
   <section aria-labelledby="log-h">
     <h2 id="log-h">기록</h2>
     <div class="log">
+
+      <article class="entry">
+        <h3>고정 터널을 만들려다 보류 <span class="tag">배포</span></h3>
+        <div class="meta">2026-11-03</div>
+        <dl>
+          <dt>문제</dt><dd>빠른 터널은 켤 때마다 주소가 바뀌어 Vercel 값을 매번 고쳐야 한다.</dd>
+          <dt>원인</dt><dd>ngrok 고정 주소를 쓰려 했지만, 지금 네트워크가 ngrok.com과 다운로드 서버를 막았다 (연결 끊김). tailscale.com도 열리지 않았다. Cloudflare는 된다.</dd>
+          <dt>한 일</dt><dd>당분간 매번 주소를 바꾸기로 했다. 나중 선택지: Cloudflare 이름 있는 터널(도메인 필요) 또는 Vercel CLI로 주소 갱신 자동화. 시연 장소 네트워크도 미리 확인할 것.</dd>
+        </dl>
+      </article>
 
       <article class="entry">
         <h3>몽실이가 틀린 한국어를 말함 <span class="tag">AI</span></h3>
