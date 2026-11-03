@@ -8,6 +8,7 @@ import { supabase, signedUrls, today, koreanDate } from '@/lib/supabase';
 import { useMember } from '@/lib/useMember';
 import { loadActivities } from '@/lib/activities';
 import { recommend, classifyChange, MOOD_KEYS } from '@/lib/recommend';
+import { startLadder, nextLadder } from '@/lib/ladder';
 import Icon from '@/components/Icon';
 import Mascot from '@/components/Mascot';
 import { talkNode } from './talk';
@@ -70,13 +71,13 @@ function nextPhoto(d) {
   return d.photos.find((p) => p.ai_allowed && !d.stories.some((s) => s.photo_id === p.id) && !d.skipped.includes(p.title));
 }
 
-// 서버(/api/talk)에 몽실이의 다음 질문을 요청
-async function fetchTurn(photoId, history) {
+// 서버(/api/talk)에 몽실이의 다음 질문을 요청. ladder: 회상 대화 사다리 상태 (어느 단계의 질문을 할지)
+async function fetchTurn(photoId, history, ladder = startLadder()) {
   const { data: { session } } = await supabase.auth.getSession();
   const res = await fetch('/api/talk', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
-    body: JSON.stringify({ photoId, history })
+    body: JSON.stringify({ photoId, history, level: ladder.level, comfort: ladder.comfort })
   });
   const body = await res.json();
   if (!res.ok) throw new Error(body.error);
@@ -212,7 +213,7 @@ export default function ElderPage() {
 
   function startTalk(pre = '') {
     const photo = nextPhoto(d);
-    talk.current = { utter: [], photo };
+    talk.current = { utter: [], photo, ladder: startLadder() };
     if (!photo) return goTalk('mood', pre + '지금은 새로 볼 사진이 없어요. ');
     goTalk('start', pre);
   }
@@ -232,8 +233,8 @@ export default function ElderPage() {
       // 첫 질문은 화면을 열 때 미리 요청해 둔 것이 있으면 그걸 쓴다
       const early = !history.length && prefetch.current?.photoId === photoId ? prefetch.current.promise : null;
       prefetch.current = null;
-      const body = await (early || fetchTurn(photoId, history));
-      if (id === aiReq.current) show({ type: 'ai', loading: false, history, turn: body }, '', true);
+      const body = await (early || fetchTurn(photoId, history, talk.current.ladder));
+      if (id === aiReq.current) show({ type: 'ai', loading: false, history, turn: body }, pre, true);
     } catch (e) {
       console.warn('몽실이 AI 대신 각본 대화로 이어 가요:', e.message);
       if (id !== aiReq.current) return;
@@ -384,8 +385,13 @@ export default function ElderPage() {
           actions: n.options.map((o) => B(o.kind, KIND_ICON[o.kind], o.t, () => {
             if (o.s) talk.current.utter.push({ text: o.s, quote: o.t });
             const history = [...sc.history, { q: n.say, a: o.t }];
-            if (n.done || history.length >= 6) goTalk('wrap', '');
-            else aiTurn(history);
+            // 고른 버튼(종류·밝기)으로 다음 질문 단계를 정한다
+            talk.current.ladder = nextLadder(talk.current.ladder, { kind: o.kind, tone: o.tone });
+            if (n.done || talk.current.ladder.done) {
+              console.info('회상 대화 단계 경로:', talk.current.ladder.path.join(' → '), '/ 최고 단계', talk.current.ladder.maxLevel);
+              goTalk('wrap', '');
+            } else aiTurn(history, talk.current.ladder.comfort ? '그때 마음이 힘드셨겠어요. ' : '');
+            // 위로 말은 작은 AI가 빼먹기도 해서, 알고리즘이 직접 붙인다
           })),
           bar: bar(true, skip)
         };

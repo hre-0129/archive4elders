@@ -26,7 +26,8 @@ export async function POST(req) {
   const { data: { user } } = await db.auth.getUser(token);
   if (!user) return fail(401, '로그인이 필요해요');
 
-  const { photoId, history = [] } = await req.json().catch(() => ({}));
+  const { photoId, history = [], level: rawLevel = 1, comfort = false } = await req.json().catch(() => ({}));
+  const level = Math.min(5, Math.max(1, Math.round(Number(rawLevel)) || 1)); // 질문 단계 1~5 (회상 대화 사다리)
   if (!Array.isArray(history) || history.length > MAX_TURNS) return fail(400, '대화가 너무 길어요');
 
   const { data: photo } = await db.from('photos').select('*').eq('id', photoId).single();
@@ -65,6 +66,8 @@ export async function POST(req) {
       notes: (notes || []).map((n) => ({ by: nameOf(n.author), text: n.text })),
       skipped: (skipped || []).map((s) => s.topic),
       history: history.map((h) => ({ q: String(h.q).slice(0, 100), a: String(h.a).slice(0, 30) })),
+      level,
+      comfort: Boolean(comfort),
       image
     });
     return Response.json(turn);

@@ -1,6 +1,8 @@
 // 서버에서만 쓰는 AI 호출 모듈. AI_PROVIDER 환경변수로 gemini / ollama 를 고른다.
-// 어느 AI든 같은 형식의 JSON을 받아 화면용 { say, options:[{t, kind, s}], done } 로 바꿔 돌려준다.
-// (작은 모델도 헷갈리지 않게 AI에게는 question / buttons[{label, type, story}] 라는 쉬운 이름을 쓴다)
+// 어느 AI든 같은 형식의 JSON을 받아 화면용 { say, options:[{t, kind, s, tone}] } 로 바꿔 돌려준다.
+// (작은 모델도 헷갈리지 않게 AI에게는 question / buttons[{label, type, story, tone}] 라는 쉬운 이름을 쓴다)
+// 무엇을 물을지(질문 단계)는 회상 대화 사다리(src/lib/ladder.js)가 정하고, AI는 그 단계의 질문을 말로 만든다.
+import { LEVELS } from './ladder';
 
 export const PROVIDER = (process.env.AI_PROVIDER || '').toLowerCase();
 
@@ -8,18 +10,19 @@ export const PROVIDER = (process.env.AI_PROVIDER || '').toLowerCase();
 export function systemPrompt({ elderName }) {
   return `너는 '몽실이'. ${elderName} 님과 옛 사진을 보며 이야기한다. 어르신은 버튼만 누른다.
 규칙:
-- question: 존댓말 한 문장, 40자 이내. 맞고 틀림이 있는 질문(언제·누구·어디) 대신 느낌·분위기·감각을 묻는다.
+- question: 존댓말 한 문장, 40자 이내. 매번 주어지는 '이번 질문 단계'에 맞는 질문을 만든다. 맞고 틀림이 있는 질문(언제·누구·어디)은 하지 않는다.
 - 사진에 보이는 것만 말하고, 보이지 않는 사실은 지어내지 않는다. 가족 설명은 가족의 생각이다.
-- buttons: 2~3개. label은 어르신이 할 말, 한국어 12자 이내.
+- buttons: 2~3개. label은 어르신이 할 말, 한국어 12자 이내. 서로 다른 기억·느낌이 되게.
 - type: 내용 대답 "pick", 네 "go", 아니요 "stop", 잘 모르겠어요 "help". 내용 대답이 있으면 "잘 모르겠어요"를 하나 넣는다.
 - story: 그 버튼을 누르면 이야기책에 남을 과거형 한 문장. label 내용만 쓰고 새 사실을 더하지 않는다. 기록할 게 없으면 "".
-- 힘든 이야기에는 공감하고 가벼운 질문으로 넘어간다. 같은 질문을 반복하지 않는다. 다시 묻지 않을 주제는 꺼내지 않는다.
-- 4~5번 오갔으면 done: true.
-예시:
-{"question":"바다 냄새가 기억나세요?","buttons":[{"label":"시원했어요","type":"pick","story":"바닷바람이 시원했다."},{"label":"짭짤했어요","type":"pick","story":"바다 냄새가 짭짤했다."},{"label":"잘 모르겠어요","type":"help","story":""}],"done":false}`;
+- tone: 그 대답이 즐겁거나 따뜻한 기억이면 "bright", 슬프거나 힘든 기억이면 "heavy", 그 외 "neutral".
+- 같은 질문을 반복하지 않는다. 다시 묻지 않을 주제는 꺼내지 않는다.
+예시 (감각 단계):
+{"question":"바다 냄새가 기억나세요?","buttons":[{"label":"시원했어요","type":"pick","story":"바닷바람이 시원했다.","tone":"bright"},{"label":"짭짤했어요","type":"pick","story":"바다 냄새가 짭짤했다.","tone":"neutral"},{"label":"잘 모르겠어요","type":"help","story":"","tone":"neutral"}]}`;
 }
 
-export function userPrompt({ photo, notes, history, skipped }) {
+export function userPrompt({ photo, notes, history, skipped, level = 1, comfort = false }) {
+  const L = LEVELS[level];
   const lines = [
     `사진 제목: ${photo.title}`,
     photo.period && `시기(가족이 적음): ${photo.period}`,
@@ -27,10 +30,15 @@ export function userPrompt({ photo, notes, history, skipped }) {
     ...notes.map((n) => `${n.by} 설명: "${n.text}"`),
     skipped.length && `다시 묻지 않을 주제: ${skipped.join(', ')}`,
     ...history.map((h, i) => `${i + 1}. 몽실이: ${h.q} → 어르신: ${h.a}`),
+    '',
+    `이번 질문 단계: ${L.name} — ${L.ask}. (예: "${L.example}" 처럼, 하지만 이 사진에 맞게 새로)`,
+    comfort && '앞의 대답이 힘든 기억이었다. 질문 앞에 짧게 공감하는 말을 넣고, 가볍게 묻는다.',
     history.length ? '다음 질문을 JSON으로.' : '첫 질문을 JSON으로.'
   ];
-  return lines.filter(Boolean).join('\n');
+  return lines.filter((l) => l !== false && l !== undefined && l !== 0).join('\n');
 }
+
+const TONES = ['bright', 'heavy', 'neutral'];
 
 const SCHEMA = {
   type: 'object',
@@ -40,13 +48,17 @@ const SCHEMA = {
       type: 'array',
       items: {
         type: 'object',
-        properties: { label: { type: 'string' }, type: { type: 'string', enum: ['pick', 'go', 'stop', 'help'] }, story: { type: 'string' } },
-        required: ['label', 'type', 'story']
+        properties: {
+          label: { type: 'string' },
+          type: { type: 'string', enum: ['pick', 'go', 'stop', 'help'] },
+          story: { type: 'string' },
+          tone: { type: 'string', enum: TONES }
+        },
+        required: ['label', 'type', 'story', 'tone']
       }
-    },
-    done: { type: 'boolean' }
+    }
   },
-  required: ['question', 'buttons', 'done']
+  required: ['question', 'buttons']
 };
 
 async function callGemini({ system, user, image }) {
@@ -112,7 +124,8 @@ function clean(raw, title) {
     .map((b) => ({
       t: typeof b?.label === 'string' ? b.label.trim().slice(0, 16) : '',
       kind: KINDS.includes(b?.type) ? b.type : 'pick',
-      s: typeof b?.story === 'string' && HANGUL.test(b.story) ? b.story.trim().slice(0, 120) : ''
+      s: typeof b?.story === 'string' && HANGUL.test(b.story) ? b.story.trim().slice(0, 120) : '',
+      tone: TONES.includes(b?.tone) ? b.tone : 'neutral'
     }))
     // 버튼 글자가 한국어가 아니거나(예: "pick") 겹치면 버린다
     .filter((o, i, all) => HANGUL.test(o.t) && !KINDS.includes(o.t) && all.findIndex((x) => x.t === o.t) === i)
@@ -120,12 +133,12 @@ function clean(raw, title) {
   // "잘 모르겠어요" 같은 대답은 이야기책에 남기지 않는다
   // 파란 버튼은 늘 같은 말로 (작은 모델이 "도움이 필요해요" 같은 엉뚱한 말을 넣기도 한다)
   options.forEach((o) => {
-    if (o.kind === 'help') { o.s = ''; o.t = '잘 모르겠어요'; }
+    if (o.kind === 'help') { o.s = ''; o.t = '잘 모르겠어요'; o.tone = 'neutral'; }
     else if (o.kind === 'pick') o.s = storyLine(o.s, o.t, title);
   });
   const say = typeof j.question === 'string' ? j.question.trim() : '';
   if (!HANGUL.test(say) || options.length < 2) throw new Error('AI 응답 형식이 맞지 않아요');
-  return { say: say.slice(0, 80), options, done: Boolean(j.done) };
+  return { say: say.slice(0, 80), options, done: false };
 }
 
 const norm = (s) => s.replace(/[^가-힣a-z0-9]/gi, '');
