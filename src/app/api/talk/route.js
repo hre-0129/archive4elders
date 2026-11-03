@@ -66,7 +66,8 @@ export async function POST(req) {
       photo,
       notes: (notes || []).map((n) => ({ by: nameOf(n.author), text: n.text })),
       skipped: (skipped || []).map((s) => s.topic),
-      history: history.map((h) => ({ q: String(h.q).slice(0, 100), a: String(h.a).slice(0, 30) })),
+      // 대답은 버튼(짧음) 또는 어르신이 직접 적은 글(최대 200자)
+      history: history.map((h) => ({ q: String(h.q).slice(0, 100), a: String(h.a).slice(0, 200) })),
       level,
       comfort: Boolean(comfort),
       image
